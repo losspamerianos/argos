@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, boolean, integer, uuid, unique } from 'drizzle-orm/pg-core';
-import { operations } from './platform';
+import { operations, organizations } from './platform';
 
 export const locales = pgTable('locales', {
   code: text('code').primaryKey(),
@@ -11,9 +11,12 @@ export const locales = pgTable('locales', {
 });
 
 /**
- * Translations are namespaced and locale-keyed. operation_id NULL = platform-wide;
- * a row with operation_id set overrides the platform row for that operation only.
- * Lookup order: operation override → platform default → fallback locale → key.
+ * Translations are namespaced and locale-keyed. Both organization_id and
+ * operation_id can be NULL (platform-wide), set to an org (org-wide override),
+ * or set together for an operation-specific override.
+ *
+ * Lookup chain: operation override → org override → platform default →
+ * fallback locale → key.
  */
 export const translations = pgTable(
   'translations',
@@ -24,13 +27,16 @@ export const translations = pgTable(
     locale: text('locale')
       .notNull()
       .references(() => locales.code),
+    organizationId: uuid('organization_id').references(() => organizations.id, {
+      onDelete: 'cascade'
+    }),
     operationId: uuid('operation_id').references(() => operations.id, { onDelete: 'cascade' }),
     value: text('value').notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
   },
   (t) => ({
     uniq: unique('translations_unique')
-      .on(t.namespace, t.key, t.locale, t.operationId)
+      .on(t.namespace, t.key, t.locale, t.organizationId, t.operationId)
       .nullsNotDistinct()
   })
 );

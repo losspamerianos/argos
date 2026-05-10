@@ -6,8 +6,12 @@
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-  function changeOperation(slug: string) {
-    location.assign(slug ? `/op/${slug}` : '/');
+  function changeOrg(slug: string) {
+    location.assign(slug ? `/${slug}` : '/');
+  }
+
+  function changeOp(slug: string) {
+    location.assign(slug ? `/${data.organization.slug}/${slug}` : `/${data.organization.slug}`);
   }
 
   function changeLocale(locale: string) {
@@ -16,11 +20,14 @@
 </script>
 
 <TopBar
+  organizations={data.organizations}
+  currentOrgSlug={data.organization.slug}
+  operations={data.orgOperations}
   currentOpSlug={data.operation.slug}
-  operations={data.operations}
   locale={data.locale}
   locales={data.enabledLocales}
-  onChangeOperation={changeOperation}
+  onChangeOrg={changeOrg}
+  onChangeOp={changeOp}
   onChangeLocale={changeLocale}
 />
 

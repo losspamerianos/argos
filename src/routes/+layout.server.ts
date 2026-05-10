@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import type { LayoutServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { operations as operationsTable, locales as localesTable } from '$lib/server/db/schema';
+import { organizations as orgs, locales as localesTable } from '$lib/server/db/schema';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const enabledLocales = await db
@@ -10,16 +10,18 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     .where(eq(localesTable.enabled, true))
     .orderBy(asc(localesTable.displayOrder));
 
-  const operations = await db
-    .select({ slug: operationsTable.slug, name: operationsTable.name })
-    .from(operationsTable)
-    .where(eq(operationsTable.status, 'active'))
-    .orderBy(asc(operationsTable.name));
+  // For the skeleton, list all active orgs. Once auth is wired end-to-end,
+  // filter by membership unless the user is a platform admin.
+  const organizations = await db
+    .select({ slug: orgs.slug, name: orgs.name })
+    .from(orgs)
+    .where(eq(orgs.status, 'active'))
+    .orderBy(asc(orgs.name));
 
   return {
     locale: locals.locale,
     enabledLocales,
-    operations,
+    organizations,
     user: locals.user ? { sub: locals.user.sub } : null
   };
 };

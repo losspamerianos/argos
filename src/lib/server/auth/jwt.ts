@@ -4,7 +4,9 @@ import { getPrivateKey, getPublicKey, JWT_ALG } from './keys';
 
 export type AccessClaims = JWTPayload & {
   sub: string;
-  /** Map of operation slug → role string per operation membership. */
+  /** Map of org slug → roles in that organization (e.g. 'admin' | 'member'). */
+  org_roles: Record<string, string[]>;
+  /** Map of "{orgSlug}/{opSlug}" → roles in that specific operation. */
   op_roles: Record<string, string[]>;
   locale?: string;
   is_platform_admin?: boolean;

@@ -8,6 +8,13 @@
       "when": 1778399293603,
       "tag": "0000_glorious_red_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778400174213,
+      "tag": "0001_smiling_pestilence",
+      "breakpoints": true
     }
   ]
 }
