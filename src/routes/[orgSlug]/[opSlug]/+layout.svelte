@@ -26,6 +26,7 @@
   currentOpSlug={data.operation.slug}
   locale={data.locale}
   locales={data.enabledLocales}
+  user={data.user}
   onChangeOrg={changeOrg}
   onChangeOp={changeOp}
   onChangeLocale={changeLocale}

@@ -1,6 +1,8 @@
 <script lang="ts">
   type SlugItem = { slug: string; name: string };
   type LocaleEntry = { code: string; displayName: string };
+  type UserInfo = { id: string; email: string; displayName: string | null } | null;
+
   type Props = {
     organizations: SlugItem[];
     currentOrgSlug?: string;
@@ -8,6 +10,7 @@
     currentOpSlug?: string;
     locale: string;
     locales: LocaleEntry[];
+    user?: UserInfo;
     onChangeOrg: (slug: string) => void;
     onChangeOp: (slug: string) => void;
     onChangeLocale: (locale: string) => void;
@@ -19,10 +22,16 @@
     currentOpSlug,
     locale,
     locales,
+    user = null,
     onChangeOrg,
     onChangeOp,
     onChangeLocale
   }: Props = $props();
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.assign('/login');
+  }
 </script>
 
 <header
@@ -68,5 +77,23 @@
         <option value={l.code}>{l.displayName}</option>
       {/each}
     </select>
+
+    {#if user}
+      <span class="text-neutral-300">{user.displayName ?? user.email}</span>
+      <button
+        type="button"
+        onclick={logout}
+        class="rounded border border-neutral-700 px-2 py-1 hover:border-neutral-500"
+      >
+        Logout
+      </button>
+    {:else}
+      <a
+        href="/login"
+        class="rounded border border-neutral-700 px-2 py-1 hover:border-amber-400 hover:text-amber-400"
+      >
+        Login
+      </a>
+    {/if}
   </div>
 </header>
