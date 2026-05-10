@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: argos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: argos
+      POSTGRES_PASSWORD: argos
+      POSTGRES_DB: argos
+    volumes:
+      - argos_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U argos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: argos-app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://argos:argos@db:5432/argos
+      NODE_ENV: development
+      JWT_PRIVATE_KEY_PATH: /app/keys/jwt-private.pem
+      JWT_PUBLIC_KEY_PATH: /app/keys/jwt-public.pem
+      JWT_ACCESS_TTL_SECONDS: 900
+      JWT_REFRESH_TTL_SECONDS: 2592000
+      JWT_ISSUER: argos
+      JWT_AUDIENCE: argos
+      PLATFORM_DEFAULT_LOCALE: en
+      MAP_DEFAULT_CENTER_LON: 33.6694
+      MAP_DEFAULT_CENTER_LAT: 34.9787
+      MAP_DEFAULT_ZOOM: 12
+    volumes:
+      - .:/app
+      - argos_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "pnpm install --frozen-lockfile=false && pnpm dev"
+
+volumes:
+  argos_db_data:
+  argos_node_modules:

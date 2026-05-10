@@ -1,0 +1,19 @@
+node_modules/
+.DS_Store
+.env
+.env.*
+!.env.example
+build/
+.svelte-kit/
+package-lock.json
+yarn.lock
+*.log
+.vscode/
+.idea/
+
+# JWT keys – never commit
+keys/*
+!keys/.gitkeep
+
+# Drizzle generated artifacts
+.drizzle/
