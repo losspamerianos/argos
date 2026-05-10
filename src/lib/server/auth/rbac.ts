@@ -79,3 +79,27 @@ export function canAccessOperation(
   if (claims.org_roles?.[orgSlug]?.length) return true;
   return Boolean(claims.op_roles?.[`${orgSlug}/${opSlug}`]?.length);
 }
+
+/**
+ * Resource-write checks. Read access is `canAccessOperation` for everything;
+ * these gate mutating endpoints and live with the rest of the policy here so
+ * future grants can be reasoned about in one place.
+ */
+
+/** Create / edit / lifecycle-transition sites and sectors. */
+export function canManageSites(claims: Claims, orgSlug: string, opSlug: string): boolean {
+  if (!claims) return false;
+  if (claims.is_platform_admin) return true;
+  if (hasOrgRole(claims, orgSlug, 'admin')) return true;
+  return hasOpRole(claims, orgSlug, opSlug, ['coordinator', 'data_manager']);
+}
+
+/** Submit a sighting. Field crews are the primary callers; observers count too,
+ *  because partner-org volunteers logging what they actually saw is the point. */
+export function canRecordSightings(
+  claims: Claims,
+  orgSlug: string,
+  opSlug: string
+): boolean {
+  return canAccessOperation(claims, orgSlug, opSlug);
+}

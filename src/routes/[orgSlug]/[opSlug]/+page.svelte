@@ -1,7 +1,9 @@
 <script lang="ts">
-  import MapShell from '$lib/components/map/MapShell.svelte';
+  import MapShell, { type LayerKey, type LayerVisibility } from '$lib/components/map/MapShell.svelte';
   import LayerPanel from '$lib/components/map/LayerPanel.svelte';
   import DossierDrawer from '$lib/components/dossier/DossierDrawer.svelte';
+  import SiteForm from '$lib/components/forms/SiteForm.svelte';
+  import SightingForm from '$lib/components/forms/SightingForm.svelte';
   import type { GeoJSONPolygon } from '$lib/types/geo';
   import type { PageData } from './$types';
 
@@ -30,20 +32,95 @@
   const center = $derived(polygonCentroid(data.operation.aoPolygon, data.mapDefaults.center));
   const zoom = $derived(data.mapDefaults.zoom);
 
-  let layers = $state([
-    { id: 'sectors', label: 'Sectors', visible: true },
-    { id: 'sites', label: 'Sites', visible: true },
-    { id: 'leads', label: 'Leads', visible: false }
-  ]);
-  let dossierOpen = $state(false);
+  let layerVisibility = $state<LayerVisibility>({
+    sectors: true,
+    sites: true,
+    sightings: true,
+    leads: false
+  });
+
+  // LayerPanel still consumes the flat array shape; project from the typed map.
+  const layers = $derived(
+    (
+      [
+        { id: 'sectors', label: 'Sectors' },
+        { id: 'sites', label: 'Sites' },
+        { id: 'sightings', label: 'Sightings' },
+        { id: 'leads', label: 'Leads' }
+      ] as const
+    ).map((l) => ({ ...l, visible: layerVisibility[l.id] }))
+  );
 
   function toggleLayer(id: string) {
-    layers = layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l));
+    if (id in layerVisibility) {
+      const k = id as LayerKey;
+      layerVisibility = { ...layerVisibility, [k]: !layerVisibility[k] };
+    }
   }
+
+  type DrawerState =
+    | { kind: 'closed' }
+    | { kind: 'site'; point: { lon: number; lat: number } | null }
+    | { kind: 'sighting'; point: { lon: number; lat: number } | null };
+
+  let drawer = $state<DrawerState>({ kind: 'closed' });
+
+  function closeDrawer() {
+    drawer = { kind: 'closed' };
+  }
+
+  function startCreateSite() {
+    drawer = { kind: 'site', point: null };
+  }
+
+  function startCreateSighting() {
+    drawer = { kind: 'sighting', point: null };
+  }
+
+  function onMapClick(ll: { lon: number; lat: number }) {
+    drawer = { kind: 'sighting', point: ll };
+  }
+
+  const drawerTitle = $derived(
+    drawer.kind === 'site'
+      ? 'New site'
+      : drawer.kind === 'sighting'
+        ? 'New sighting'
+        : ''
+  );
 </script>
 
-<LayerPanel {layers} onToggle={toggleLayer} />
+<LayerPanel
+  {layers}
+  onToggle={toggleLayer}
+  onCreateSite={startCreateSite}
+  onCreateSighting={startCreateSighting}
+/>
 <div class="flex-1">
-  <MapShell {center} {zoom} aoPolygon={data.operation.aoPolygon} />
+  <MapShell
+    {center}
+    {zoom}
+    aoPolygon={data.operation.aoPolygon}
+    siteFeatures={data.sites}
+    sightingFeatures={data.sightings}
+    {layerVisibility}
+    {onMapClick}
+  />
 </div>
-<DossierDrawer open={dossierOpen} title="" onClose={() => (dossierOpen = false)} />
+<DossierDrawer open={drawer.kind !== 'closed'} title={drawerTitle} onClose={closeDrawer}>
+  {#if drawer.kind === 'site'}
+    <SiteForm
+      orgSlug={data.organization.slug}
+      opSlug={data.operation.slug}
+      initialPoint={drawer.point}
+      onClose={closeDrawer}
+    />
+  {:else if drawer.kind === 'sighting'}
+    <SightingForm
+      orgSlug={data.organization.slug}
+      opSlug={data.operation.slug}
+      initialPoint={drawer.point}
+      onClose={closeDrawer}
+    />
+  {/if}
+</DossierDrawer>
