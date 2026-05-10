@@ -9,8 +9,20 @@ build/
 package-lock.json
 yarn.lock
 *.log
+*.swp
+*~
 .vscode/
 .idea/
+.history/
+.zed/
+.fleet/
+.cursor/
+.aider*
+.cache/
+coverage/
+*.tsbuildinfo
+.eslintcache
+vite.config.*.timestamp-*
 
 # JWT keys – never commit
 keys/*

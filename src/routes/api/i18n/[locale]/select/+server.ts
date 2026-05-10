@@ -1,13 +1,18 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
+import { setLocaleCookie } from '$lib/server/auth/cookies';
+import { listEnabledLocales } from '$lib/server/i18n';
+
+const LOCALE_FORMAT = /^[a-z]{2}(-[A-Z]{2})?$/;
 
 export const POST: RequestHandler = async ({ params, cookies }) => {
-  cookies.set('argos_locale', params.locale, {
-    path: '/',
-    maxAge: 60 * 60 * 24 * 365,
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: false
-  });
+  if (!LOCALE_FORMAT.test(params.locale)) throw error(400, 'invalid_locale_format');
+
+  const enabled = await listEnabledLocales();
+  if (!enabled.some((l) => l.code === params.locale)) {
+    throw error(404, 'unknown_locale');
+  }
+
+  setLocaleCookie(cookies, params.locale);
   return json({ ok: true, locale: params.locale });
 };

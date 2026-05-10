@@ -7,7 +7,26 @@ if (!url) {
   throw new Error('DATABASE_URL is not set');
 }
 
-const client = postgres(url, { max: 10 });
+const sslMode = process.env.PGSSL;
+const ssl =
+  sslMode === 'require' || sslMode === 'true'
+    ? ('require' as const)
+    : sslMode === 'allow' || sslMode === 'prefer'
+      ? (sslMode as 'allow' | 'prefer')
+      : undefined;
+
+const client = postgres(url, {
+  max: 10,
+  idle_timeout: 30,
+  connect_timeout: 10,
+  ssl,
+  // Apply server-side guards on every connection.
+  connection: {
+    statement_timeout: '30000',
+    idle_in_transaction_session_timeout: '60000'
+  }
+});
+
 export const db = drizzle(client, { schema });
 export type DB = typeof db;
 export { schema };

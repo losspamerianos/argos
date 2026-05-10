@@ -1,10 +1,8 @@
 /**
- * Reserved top-level slugs that must not be used as Organization slugs.
- *
- * Filesystem routes ('/api', '/static') already win over the [orgSlug]
- * dynamic param at runtime, so nothing breaks if a clashing slug exists –
- * but the org route will simply be unreachable. Block these names at
- * Org-creation time to avoid silent shadowing.
+ * Reserved top-level slugs. Filesystem routes (/api, /static, /login, ...) win
+ * over the [orgSlug] dynamic param at runtime, so a clashing org slug is only
+ * unreachable rather than dangerous — but that "unreachable" failure is a
+ * support nightmare. Block them at Org-creation time.
  */
 const RESERVED_ORG_SLUGS = new Set<string>([
   'api',
@@ -23,6 +21,24 @@ const RESERVED_ORG_SLUGS = new Set<string>([
   'health',
   'about',
   'home',
+  'public',
+  'assets',
+  'media',
+  'files',
+  'uploads',
+  'cdn',
+  'static-assets',
+  'ws',
+  'metrics',
+  'webhook',
+  'webhooks',
+  'api-docs',
+  'openapi',
+  'terms',
+  'privacy',
+  'legal',
+  '404',
+  '500',
   'manifest.webmanifest',
   'robots.txt',
   'sitemap.xml',
@@ -33,11 +49,14 @@ const RESERVED_ORG_SLUGS = new Set<string>([
 ]);
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+/** Reject all-numeric slugs (`123`) — they look like ids and confuse routing. */
+const ALPHA_REQUIRED = /[a-z]/;
 
 export function isReservedOrgSlug(slug: string): boolean {
   return RESERVED_ORG_SLUGS.has(slug.toLowerCase());
 }
 
 export function isValidSlug(slug: string): boolean {
-  return SLUG_PATTERN.test(slug);
+  if (typeof slug !== 'string') return false;
+  return SLUG_PATTERN.test(slug) && ALPHA_REQUIRED.test(slug);
 }

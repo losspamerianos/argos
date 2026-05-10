@@ -4,23 +4,34 @@
   let errorMsg: string | null = $state(null);
   let loading = $state(false);
 
+  function safeNextClient(raw: string | null): string {
+    if (!raw || !raw.startsWith('/')) return '/';
+    if (raw.startsWith('//') || raw.startsWith('/\\')) return '/';
+    return raw;
+  }
+
   async function submit(e: SubmitEvent) {
     e.preventDefault();
     loading = true;
     errorMsg = null;
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    if (res.ok) {
-      const next = new URLSearchParams(location.search).get('next') ?? '/';
-      location.assign(next);
-      return;
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (res.ok) {
+        const next = safeNextClient(new URLSearchParams(location.search).get('next'));
+        location.assign(next);
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { message?: string };
+      errorMsg = data.message ?? `login_failed_${res.status}`;
+    } catch {
+      errorMsg = 'network_error';
+    } finally {
+      loading = false;
     }
-    const data = (await res.json().catch(() => ({}))) as { message?: string };
-    errorMsg = data.message ?? `login_failed_${res.status}`;
-    loading = false;
   }
 </script>
 
@@ -38,6 +49,8 @@
         bind:value={email}
         required
         autocomplete="username"
+        autofocus
+        aria-invalid={errorMsg !== null}
         class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
       />
     </label>
@@ -49,12 +62,13 @@
         bind:value={password}
         required
         autocomplete="current-password"
+        aria-invalid={errorMsg !== null}
         class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
       />
     </label>
 
     {#if errorMsg}
-      <p class="text-xs text-red-400">{errorMsg}</p>
+      <p class="text-xs text-red-400" role="alert">{errorMsg}</p>
     {/if}
 
     <button

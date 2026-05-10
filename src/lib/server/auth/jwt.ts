@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
-import { randomBytes, createHash } from 'node:crypto';
-import { getPrivateKey, getPublicKey, JWT_ALG } from './keys';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { getPrivateKey, getPublicKey, JWT_ALG, JWT_KID } from './keys';
 
 export type AccessClaims = JWTPayload & {
   sub: string;
@@ -14,13 +14,23 @@ export type AccessClaims = JWTPayload & {
 
 const ISSUER = process.env.JWT_ISSUER ?? 'argos';
 const AUDIENCE = process.env.JWT_AUDIENCE ?? 'argos';
-const ACCESS_TTL = Number(process.env.JWT_ACCESS_TTL_SECONDS ?? 900);
-const REFRESH_TTL = Number(process.env.JWT_REFRESH_TTL_SECONDS ?? 2_592_000);
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`invalid integer env var (got ${JSON.stringify(value)})`);
+  }
+  return Math.floor(n);
+}
+
+const ACCESS_TTL = parsePositiveInt(process.env.JWT_ACCESS_TTL_SECONDS, 900);
+const REFRESH_TTL = parsePositiveInt(process.env.JWT_REFRESH_TTL_SECONDS, 2_592_000);
 
 export async function signAccessToken(claims: Omit<AccessClaims, 'iat' | 'exp' | 'iss' | 'aud'>) {
   const key = await getPrivateKey();
   return await new SignJWT(claims)
-    .setProtectedHeader({ alg: JWT_ALG, typ: 'JWT' })
+    .setProtectedHeader({ alg: JWT_ALG, typ: 'JWT', kid: JWT_KID })
     .setIssuer(ISSUER)
     .setAudience(AUDIENCE)
     .setIssuedAt()
@@ -39,11 +49,36 @@ export async function verifyAccessToken(token: string): Promise<AccessClaims> {
   return payload as AccessClaims;
 }
 
-export function generateRefreshToken(): { raw: string; hash: string; expiresAt: Date } {
+/**
+ * Generate a refresh token. The id is pre-allocated so the caller can write it
+ * to `refresh_tokens.id` together with `family_id` in a single INSERT.
+ *
+ * Pass `familyId` when rotating an existing token (so the new row inherits the
+ * family); pass `parentId` to record the chain.
+ */
+export function generateRefreshToken(opts?: {
+  familyId?: string;
+  parentId?: string | null;
+}): {
+  id: string;
+  raw: string;
+  hash: string;
+  expiresAt: Date;
+  familyId: string;
+  parentId: string | null;
+} {
+  const id = randomUUID();
   const raw = randomBytes(32).toString('base64url');
   const hash = createHash('sha256').update(raw).digest('hex');
   const expiresAt = new Date(Date.now() + REFRESH_TTL * 1000);
-  return { raw, hash, expiresAt };
+  return {
+    id,
+    raw,
+    hash,
+    expiresAt,
+    familyId: opts?.familyId ?? id,
+    parentId: opts?.parentId ?? null
+  };
 }
 
 export function hashRefreshToken(raw: string): string {

@@ -3,25 +3,35 @@ import { importPKCS8, importSPKI, type CryptoKey } from 'jose';
 
 const ALG = 'ES256';
 
-let privateKey: CryptoKey | null = null;
-let publicKey: CryptoKey | null = null;
+let privateKeyPromise: Promise<CryptoKey> | null = null;
+let publicKeyPromise: Promise<CryptoKey> | null = null;
 
-export async function getPrivateKey(): Promise<CryptoKey> {
-  if (privateKey) return privateKey;
+/** Cache the *promise* so concurrent first-callers share one importPKCS8. */
+export function getPrivateKey(): Promise<CryptoKey> {
+  if (privateKeyPromise) return privateKeyPromise;
   const path = process.env.JWT_PRIVATE_KEY_PATH;
   if (!path) throw new Error('JWT_PRIVATE_KEY_PATH is not set');
-  const pem = readFileSync(path, 'utf8');
-  privateKey = await importPKCS8(pem, ALG);
-  return privateKey;
+  const p = importPKCS8(readFileSync(path, 'utf8'), ALG);
+  // On import failure, allow the next caller to retry from scratch.
+  p.catch(() => {
+    privateKeyPromise = null;
+  });
+  privateKeyPromise = p;
+  return p;
 }
 
-export async function getPublicKey(): Promise<CryptoKey> {
-  if (publicKey) return publicKey;
+export function getPublicKey(): Promise<CryptoKey> {
+  if (publicKeyPromise) return publicKeyPromise;
   const path = process.env.JWT_PUBLIC_KEY_PATH;
   if (!path) throw new Error('JWT_PUBLIC_KEY_PATH is not set');
-  const pem = readFileSync(path, 'utf8');
-  publicKey = await importSPKI(pem, ALG);
-  return publicKey;
+  const p = importSPKI(readFileSync(path, 'utf8'), ALG);
+  p.catch(() => {
+    publicKeyPromise = null;
+  });
+  publicKeyPromise = p;
+  return p;
 }
 
 export const JWT_ALG = ALG;
+/** Single key id today; placeholder for future rotation with multiple verifying keys. */
+export const JWT_KID = process.env.JWT_KID ?? 'v1';

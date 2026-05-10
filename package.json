@@ -8,6 +8,15 @@
   "engines": {
     "node": ">=22"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/losspamerianos/argos.git"
+  },
+  "bugs": {
+    "url": "https://github.com/losspamerianos/argos/issues"
+  },
+  "homepage": "https://github.com/losspamerianos/argos#readme",
+  "author": "Nine Lives Operations",
   "scripts": {
     "dev": "vite dev --host 0.0.0.0",
     "build": "vite build",
@@ -15,12 +24,15 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "keys:gen": "bash scripts/gen-keys.sh"
+    "keys:gen": "bash scripts/gen-keys.sh",
+    "test": "echo 'no tests yet' && exit 0"
   },
   "devDependencies": {
     "@eslint/js": "^9.10.0",
@@ -31,6 +43,7 @@
     "@types/node": "^22.0.0",
     "drizzle-kit": "^0.30.0",
     "eslint": "^9.10.0",
+    "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-svelte": "^2.45.0",
     "globals": "^15.9.0",
     "prettier": "^3.3.0",

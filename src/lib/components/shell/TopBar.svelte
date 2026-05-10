@@ -29,8 +29,15 @@
   }: Props = $props();
 
   async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    location.assign('/login');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Network error: cookies still cleared on the server best-effort; surface
+      // by routing to /login regardless so the user is not stuck in an
+      // ambiguous state.
+    } finally {
+      location.assign('/login');
+    }
   }
 </script>
 
@@ -40,10 +47,11 @@
   <div class="flex items-center gap-3">
     <a href="/" class="font-mono text-xs uppercase tracking-widest text-amber-400">ARGOS</a>
 
-    <span class="text-neutral-600">/</span>
+    <span class="text-neutral-600" aria-hidden="true">/</span>
     <select
       class="rounded border border-neutral-700 bg-neutral-950 px-2 py-1"
       value={currentOrgSlug ?? ''}
+      aria-label="Organization"
       onchange={(e) => onChangeOrg((e.currentTarget as HTMLSelectElement).value)}
     >
       <option value="">— Organization —</option>
@@ -53,10 +61,11 @@
     </select>
 
     {#if currentOrgSlug}
-      <span class="text-neutral-600">/</span>
+      <span class="text-neutral-600" aria-hidden="true">/</span>
       <select
         class="rounded border border-neutral-700 bg-neutral-950 px-2 py-1"
         value={currentOpSlug ?? ''}
+        aria-label="Operation"
         onchange={(e) => onChangeOp((e.currentTarget as HTMLSelectElement).value)}
       >
         <option value="">— Operation —</option>
@@ -71,6 +80,7 @@
     <select
       class="rounded border border-neutral-700 bg-neutral-950 px-2 py-1"
       value={locale}
+      aria-label="Language"
       onchange={(e) => onChangeLocale((e.currentTarget as HTMLSelectElement).value)}
     >
       {#each locales as l (l.code)}

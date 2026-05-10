@@ -1,14 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import maplibregl from 'maplibre-gl';
-
-  type Polygon = { type: 'Polygon'; coordinates: number[][][] };
+  import type { GeoJSONPolygon } from '$lib/types/geo';
 
   type Props = {
     center: [number, number];
     zoom: number;
     style?: string;
-    aoPolygon?: Polygon | null;
+    aoPolygon?: GeoJSONPolygon | null;
   };
 
   let {
@@ -20,6 +19,7 @@
 
   let containerEl: HTMLDivElement;
   let map: maplibregl.Map | null = null;
+  let mapReady = $state(false);
 
   onMount(() => {
     map = new maplibregl.Map({
@@ -38,24 +38,43 @@
           data: { type: 'FeatureCollection', features: [] }
         });
       }
-      if (aoPolygon) {
-        map.addSource('ao', {
-          type: 'geojson',
-          data: { type: 'Feature', geometry: aoPolygon, properties: {} }
-        });
-        map.addLayer({
-          id: 'ao-outline',
-          type: 'line',
-          source: 'ao',
-          paint: { 'line-color': '#fbbf24', 'line-width': 2 }
-        });
-      }
+      map.addSource('ao', {
+        type: 'geojson',
+        data: aoPolygon
+          ? { type: 'Feature', geometry: aoPolygon, properties: {} }
+          : { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'ao-outline',
+        type: 'line',
+        source: 'ao',
+        paint: { 'line-color': '#fbbf24', 'line-width': 2 }
+      });
+      mapReady = true;
     });
   });
 
   onDestroy(() => {
     map?.remove();
     map = null;
+    mapReady = false;
+  });
+
+  // React to prop changes after the map is initialized.
+  $effect(() => {
+    if (!mapReady || !map) return;
+    map.flyTo({ center, zoom, duration: 0 });
+  });
+
+  $effect(() => {
+    if (!mapReady || !map) return;
+    const src = map.getSource('ao') as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    src.setData(
+      aoPolygon
+        ? { type: 'Feature', geometry: aoPolygon, properties: {} }
+        : { type: 'FeatureCollection', features: [] }
+    );
   });
 </script>
 

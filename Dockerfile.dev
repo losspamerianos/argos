@@ -1,11 +1,22 @@
 FROM node:22-alpine
 
+# node:22-alpine ships a pre-existing `node` user/group at uid/gid 1000.
+# Run as that user so files written into the bind-mounted source tree are
+# owned by the host's uid 1000 rather than silently becoming root.
 WORKDIR /app
 
-# pnpm via corepack (managed by Node)
+# Pre-create the named-volume mount points with the correct owner; the
+# volumes inherit this on first mount.
+RUN mkdir -p /app/node_modules /pnpm-store \
+  && chown -R node:node /app /pnpm-store
+
+# corepack lives in /usr/local/bin and needs root to install the pnpm shim.
 RUN corepack enable
+
+USER node
 
 EXPOSE 5173
 
-# Default command is overridden in docker-compose.yml to run install + dev
+# Compose `init: true` provides docker-init (tini under the hood) as PID 1
+# for proper signal handling and zombie reaping; do not duplicate.
 CMD ["pnpm", "dev"]
