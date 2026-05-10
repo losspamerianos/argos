@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, integer, uuid, unique } from 'drizzle-orm/pg-core';
 import { operations } from './platform';
 
 export const locales = pgTable('locales', {
@@ -29,7 +29,7 @@ export const translations = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
   },
   (t) => ({
-    uniq: uniqueIndex('translations_unique')
+    uniq: unique('translations_unique')
       .on(t.namespace, t.key, t.locale, t.operationId)
       .nullsNotDistinct()
   })

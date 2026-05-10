@@ -15,7 +15,9 @@ if [[ -f "${PRIV}" || -f "${PUB}" ]]; then
   exit 1
 fi
 
-openssl ecparam -name prime256v1 -genkey -noout -out "${PRIV}"
+# `openssl genpkey` emits PKCS#8 directly (what jose.importPKCS8 expects);
+# the older `ecparam -genkey` path produces SEC1, which is not compatible.
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "${PRIV}"
 openssl ec -in "${PRIV}" -pubout -out "${PUB}"
 
 chmod 600 "${PRIV}"
