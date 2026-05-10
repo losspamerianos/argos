@@ -5,6 +5,8 @@ import { db } from '$lib/server/db';
 import { translations } from '$lib/server/db/schema';
 import { listEnabledLocales } from '$lib/server/i18n';
 
+const LOCALE_FORMAT = /^[a-z]{2}(-[A-Z]{2})?$/;
+
 /**
  * Returns the platform-wide translation base for the requested locale.
  *
@@ -16,6 +18,7 @@ import { listEnabledLocales } from '$lib/server/i18n';
  */
 export const GET: RequestHandler = async ({ params, locals }) => {
   if (!locals.user) throw error(401, 'unauthorized');
+  if (!LOCALE_FORMAT.test(params.locale)) throw error(400, 'invalid_locale_format');
 
   const enabled = await listEnabledLocales();
   if (!enabled.some((l) => l.code === params.locale)) {
@@ -42,6 +45,13 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 
   return json(
     { locale: params.locale, base },
-    { headers: { 'cache-control': 'private, max-age=60' } }
+    {
+      headers: {
+        'cache-control': 'private, max-age=60',
+        // Cookie-keyed responses must not be served by intermediates from one
+        // user to another even if `private` is dropped by a misconfigured CDN.
+        vary: 'Cookie'
+      }
+    }
   );
 };

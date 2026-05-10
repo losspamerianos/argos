@@ -11,6 +11,8 @@
     locale: string;
     locales: LocaleEntry[];
     user?: UserInfo;
+    /** Pre-encoded `next` path for the Login link, including any query string. */
+    loginNext?: string;
     onChangeOrg: (slug: string) => void;
     onChangeOp: (slug: string) => void;
     onChangeLocale: (locale: string) => void;
@@ -23,10 +25,17 @@
     locale,
     locales,
     user = null,
+    loginNext = '/',
     onChangeOrg,
     onChangeOp,
     onChangeLocale
   }: Props = $props();
+
+  const loginHref = $derived(
+    loginNext && loginNext !== '/'
+      ? `/login?next=${encodeURIComponent(loginNext)}`
+      : '/login'
+  );
 
   async function logout() {
     try {
@@ -99,7 +108,7 @@
       </button>
     {:else}
       <a
-        href="/login"
+        href={loginHref}
         class="rounded border border-neutral-700 px-2 py-1 hover:border-amber-400 hover:text-amber-400"
       >
         Login

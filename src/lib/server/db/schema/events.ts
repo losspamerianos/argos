@@ -29,7 +29,8 @@ export const sightings = pgTable(
     siteIdx: index('sightings_site_id_idx').on(t.siteId),
     animalIdx: index('sightings_animal_id_idx').on(t.observedAnimalId),
     personIdx: index('sightings_person_id_idx').on(t.reportedByPersonId),
-    tsIdx: index('sightings_ts_idx').on(t.operationId, t.ts)
+    // SITREP timelines scan newest-first; store DESC so the index is pre-sorted.
+    tsIdx: index('sightings_ts_idx').on(t.operationId, t.ts.desc())
   })
 );
 
@@ -66,7 +67,8 @@ export const leads = pgTable(
     lifecycleIdx: index('leads_lifecycle_idx').on(t.operationId, t.lifecycleState),
     assigneeIdx: index('leads_assignee_idx').on(t.assignedToUserId),
     siteIdx: index('leads_site_id_idx').on(t.siteId),
-    priorityIdx: index('leads_priority_idx').on(t.operationId, t.priorityScore)
+    // Lead queue is sorted highest-priority first; index DESC matches the scan.
+    priorityIdx: index('leads_priority_idx').on(t.operationId, t.priorityScore.desc())
   })
 );
 
@@ -130,6 +132,7 @@ export const medicalEvents = pgTable(
     opIdx: index('medical_events_op_id_idx').on(t.operationId),
     animalIdx: index('medical_events_animal_id_idx').on(t.animalId),
     vetIdx: index('medical_events_vet_id_idx').on(t.vetPersonId),
-    tsIdx: index('medical_events_ts_idx').on(t.operationId, t.ts)
+    // Medical timeline scans newest-first; index DESC matches the scan order.
+    tsIdx: index('medical_events_ts_idx').on(t.operationId, t.ts.desc())
   })
 );

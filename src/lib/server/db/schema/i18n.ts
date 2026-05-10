@@ -8,7 +8,10 @@ import {
   unique,
   index
 } from 'drizzle-orm/pg-core';
-import { operations } from './platform';
+// `operations` is intentionally NOT imported here: the composite FK
+// translations(organization_id, operation_id) → operations(organization_id, id)
+// is installed in migration 0002, not in the Drizzle schema, so referencing the
+// table here would create a circular import (platform → i18n → platform).
 
 export const locales = pgTable('locales', {
   code: text('code').primaryKey(),

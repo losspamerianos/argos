@@ -15,6 +15,34 @@
       "when": 1778400174213,
       "tag": "0001_smiling_pestilence",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778406330305,
+      "tag": "0002_security_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778408143636,
+      "tag": "0003_fk_reentrancy_and_drift",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778409612136,
+      "tag": "0004_post_round7",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778410817116,
+      "tag": "0005_post_round8",
+      "breakpoints": true
     }
   ]
 }

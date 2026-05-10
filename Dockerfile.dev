@@ -5,10 +5,12 @@ FROM node:22-alpine
 # owned by the host's uid 1000 rather than silently becoming root.
 WORKDIR /app
 
-# Pre-create the named-volume mount points with the correct owner; the
-# volumes inherit this on first mount.
-RUN mkdir -p /app/node_modules /pnpm-store \
-  && chown -R node:node /app /pnpm-store
+# Pre-create the pnpm content-addressed store mount point with correct
+# ownership; the named volume inherits this on first mount. /app/node_modules
+# does not need pre-creation here — its named volume gets ownership applied
+# automatically by Docker, and recursive chown on /app would touch the (then
+# unmounted) bind mount target.
+RUN mkdir -p /pnpm-store && chown node:node /pnpm-store
 
 # corepack lives in /usr/local/bin and needs root to install the pnpm shim.
 RUN corepack enable

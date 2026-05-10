@@ -22,8 +22,23 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress,
   const ip = getClientAddress();
   const ua = (request.headers.get('user-agent') ?? '').slice(0, UA_MAX);
 
+  // Per-IP exhaustion: 429 (this is a connection property, not an identity claim).
   if (!loginIpLimiter.consume(`login:ip:${ip}`)) throw error(429, 'rate_limited');
-  if (!loginEmailLimiter.consume(`login:email:${email}`)) throw error(429, 'rate_limited');
+  // Per-email exhaustion: surface as 401 invalid_credentials so an attacker
+  // probing email-buckets cannot distinguish "rate limited because account
+  // exists and is being attacked" from "wrong password".
+  if (!loginEmailLimiter.consume(`login:email:${email}`)) {
+    await audit({
+      actorUserId: null,
+      entityType: 'session',
+      entityId: email,
+      action: 'login_failed',
+      requestId: locals.requestId,
+      ipAddress: ip,
+      userAgent: ua
+    });
+    throw error(401, 'invalid_credentials');
+  }
 
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 

@@ -17,7 +17,11 @@
 //
 // Idempotent: re-running upserts the row and always sets is_platform_admin = TRUE.
 
-import { Algorithm, hash } from '@node-rs/argon2';
+import { hash } from '@node-rs/argon2';
+// Argon2id = 2 in @node-rs/argon2's Algorithm enum. The enum is a TypeScript
+// `const enum` and not directly importable in plain ESM, but the numeric ABI
+// is stable and documented in the upstream `index.d.ts`.
+const ARGON2ID = 2;
 import postgres from 'postgres';
 import readline from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
@@ -43,41 +47,44 @@ async function readLine(label) {
 }
 
 async function readPasswordTty(label) {
+  if (typeof stdin.setRawMode !== 'function') {
+    throw new Error('terminal_does_not_support_raw_mode');
+  }
   return await new Promise((resolve, reject) => {
     process.stdout.write(label);
     const original = stdin.isRaw ?? false;
-    if (!stdin.setRawMode) {
-      reject(new Error('terminal_does_not_support_raw_mode'));
-      return;
-    }
     stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding('utf8');
     const buf = [];
+    const cleanup = () => {
+      stdin.setRawMode(original);
+      stdin.pause();
+      stdin.removeListener('data', onData);
+      stdin.removeListener('error', onError);
+    };
+    const onError = (err) => {
+      cleanup();
+      reject(err);
+    };
     const onData = (chunk) => {
       for (const ch of chunk) {
         const code = ch.charCodeAt(0);
         if (code === 0x03) {
           // Ctrl-C
-          stdin.setRawMode(original);
-          stdin.pause();
-          stdin.removeListener('data', onData);
+          cleanup();
           process.stdout.write('\n');
           process.exit(130);
         }
         if (code === 0x04) {
           // Ctrl-D — treat as end of input
-          stdin.setRawMode(original);
-          stdin.pause();
-          stdin.removeListener('data', onData);
+          cleanup();
           process.stdout.write('\n');
           resolve(buf.join(''));
           return;
         }
         if (ch === '\n' || ch === '\r') {
-          stdin.setRawMode(original);
-          stdin.pause();
-          stdin.removeListener('data', onData);
+          cleanup();
           process.stdout.write('\n');
           resolve(buf.join(''));
           return;
@@ -91,17 +98,19 @@ async function readPasswordTty(label) {
       }
     };
     stdin.on('data', onData);
+    stdin.on('error', onError);
   });
 }
 
 async function readPasswordPipe() {
-  return await new Promise((resolve) => {
+  return await new Promise((resolve, reject) => {
     let buf = '';
     stdin.setEncoding('utf8');
     stdin.on('data', (chunk) => {
       buf += chunk;
     });
     stdin.on('end', () => resolve(buf.replace(/\r?\n$/, '')));
+    stdin.on('error', reject);
   });
 }
 
@@ -155,7 +164,7 @@ if (displayName && displayName.length > DISPLAY_NAME_MAX_LENGTH) {
 }
 
 const passwordHash = await hash(password, {
-  algorithm: Algorithm.Argon2id,
+  algorithm: ARGON2ID,
   memoryCost: 19456,
   timeCost: 2,
   parallelism: 1

@@ -7,23 +7,28 @@
 
   let { data }: { data: PageData } = $props();
 
-  const FALLBACK_CENTER: [number, number] = [33.6694, 34.9787];
-
-  function polygonCentroid(p: GeoJSONPolygon | null): [number, number] {
-    if (!p?.coordinates?.[0]?.length) return FALLBACK_CENTER;
-    const ring = p.coordinates[0];
+  function polygonCentroid(
+    p: GeoJSONPolygon | null,
+    fallback: [number, number]
+  ): [number, number] {
+    const ring = p?.coordinates?.[0];
+    if (!ring?.length) return fallback;
     let sx = 0;
     let sy = 0;
     let n = 0;
     for (const point of ring) {
-      sx += point[0];
-      sy += point[1];
+      const lon = point?.[0];
+      const lat = point?.[1];
+      if (typeof lon !== 'number' || typeof lat !== 'number') continue;
+      sx += lon;
+      sy += lat;
       n++;
     }
-    return n > 0 ? [sx / n, sy / n] : FALLBACK_CENTER;
+    return n > 0 ? [sx / n, sy / n] : fallback;
   }
 
-  let center = $derived(polygonCentroid(data.operation.aoPolygon));
+  const center = $derived(polygonCentroid(data.operation.aoPolygon, data.mapDefaults.center));
+  const zoom = $derived(data.mapDefaults.zoom);
 
   let layers = $state([
     { id: 'sectors', label: 'Sectors', visible: true },
@@ -39,6 +44,6 @@
 
 <LayerPanel {layers} onToggle={toggleLayer} />
 <div class="flex-1">
-  <MapShell {center} zoom={13} aoPolygon={data.operation.aoPolygon} />
+  <MapShell {center} {zoom} aoPolygon={data.operation.aoPolygon} />
 </div>
 <DossierDrawer open={dossierOpen} title="" onClose={() => (dossierOpen = false)} />

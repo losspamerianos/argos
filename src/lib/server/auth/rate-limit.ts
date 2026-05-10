@@ -2,9 +2,15 @@
  * Tiny in-memory token-bucket rate limiter. Per-process state — fine for a
  * single-instance deployment; for multi-replica setups, replace with a
  * Redis-backed bucket or a Postgres-backed sliding window.
+ *
+ * Hard memory cap: an attacker that spreads attempts across N distinct keys
+ * would otherwise let the bucket map grow unbounded between cleanups. When the
+ * map exceeds `MAX_KEYS`, we evict the LRU half and continue.
  */
 
 type Bucket = { tokens: number; lastRefill: number };
+
+const MAX_KEYS = 50_000;
 
 class TokenBucket {
   private readonly buckets = new Map<string, Bucket>();
@@ -25,10 +31,15 @@ class TokenBucket {
     if (!bucket) {
       bucket = { tokens: this.capacity, lastRefill: now };
       this.buckets.set(key, bucket);
+      if (this.buckets.size > MAX_KEYS) this.evictLRU();
     } else {
+      // Map.set on an existing key keeps insertion order; deleting + re-adding
+      // moves it to the most-recently-used end (cheap LRU bookkeeping).
+      this.buckets.delete(key);
       const elapsedSec = (now - bucket.lastRefill) / 1000;
       bucket.tokens = Math.min(this.capacity, bucket.tokens + elapsedSec * this.refillRate);
       bucket.lastRefill = now;
+      this.buckets.set(key, bucket);
     }
     if (bucket.tokens < cost) return false;
     bucket.tokens -= cost;
@@ -43,6 +54,15 @@ class TokenBucket {
       if ((now - bucket.lastRefill) / 1000 > 600) this.buckets.delete(key);
     }
   }
+
+  private evictLRU(): void {
+    // Evict the oldest half so the next overflow isn't immediately back here.
+    const target = Math.floor(MAX_KEYS / 2);
+    for (const key of this.buckets.keys()) {
+      if (this.buckets.size <= target) break;
+      this.buckets.delete(key);
+    }
+  }
 }
 
 // Login: 10 burst, 1 every 6 s sustained per IP; 5 burst, 1 every 12 s per email.
@@ -51,3 +71,8 @@ export const loginEmailLimiter = new TokenBucket(5, 1 / 12);
 
 // Refresh: more permissive (legitimate clients can hit this multiple times in a session).
 export const refreshIpLimiter = new TokenBucket(20, 1 / 3);
+
+// Per-refresh-cookie bucket: 30 burst, 1/s sustained. Defeats shared-NAT DoS
+// by isolating a single cookie's rate from its IP's rate; combined with the
+// IP bucket, each cookie still has to share the IP allowance.
+export const refreshCookieLimiter = new TokenBucket(30, 1);

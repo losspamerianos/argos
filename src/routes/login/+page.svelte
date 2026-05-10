@@ -1,14 +1,20 @@
 <script lang="ts">
+  import type { PageData } from './$types';
+
+  let { data }: { data: PageData } = $props();
+
   let email = $state('');
   let password = $state('');
   let errorMsg: string | null = $state(null);
   let loading = $state(false);
+  let emailEl: HTMLInputElement | null = $state(null);
+  let passwordEl: HTMLInputElement | null = $state(null);
 
-  function safeNextClient(raw: string | null): string {
-    if (!raw || !raw.startsWith('/')) return '/';
-    if (raw.startsWith('//') || raw.startsWith('/\\')) return '/';
-    return raw;
-  }
+  // Programmatic focus instead of the HTML `autofocus` attribute, which
+  // disorients screen-reader users on page load.
+  $effect(() => {
+    emailEl?.focus();
+  });
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -21,14 +27,21 @@
         body: JSON.stringify({ email, password })
       });
       if (res.ok) {
-        const next = safeNextClient(new URLSearchParams(location.search).get('next'));
-        location.assign(next);
+        // The server already validated `data.next` against the open-redirect
+        // guard during load(); trust it.
+        location.assign(data.next);
         return;
       }
-      const data = (await res.json().catch(() => ({}))) as { message?: string };
-      errorMsg = data.message ?? `login_failed_${res.status}`;
+      const body = (await res.json().catch(() => ({}))) as { message?: string };
+      errorMsg = body.message ?? `login_failed_${res.status}`;
+      // Clear and refocus the password on failure: never leave a stale
+      // password sitting in the form on a shared workstation.
+      password = '';
+      passwordEl?.focus();
     } catch {
       errorMsg = 'network_error';
+      password = '';
+      passwordEl?.focus();
     } finally {
       loading = false;
     }
@@ -47,10 +60,9 @@
       <input
         type="email"
         bind:value={email}
+        bind:this={emailEl}
         required
         autocomplete="username"
-        autofocus
-        aria-invalid={errorMsg !== null}
         class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
       />
     </label>
@@ -60,6 +72,7 @@
       <input
         type="password"
         bind:value={password}
+        bind:this={passwordEl}
         required
         autocomplete="current-password"
         aria-invalid={errorMsg !== null}

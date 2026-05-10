@@ -3,6 +3,7 @@ import { error, type Handle } from '@sveltejs/kit';
 import { verifyAccessToken } from '$lib/server/auth/jwt';
 import { ACCESS_COOKIE, LOCALE_COOKIE } from '$lib/server/auth/cookies';
 import { pickLocale } from '$lib/server/i18n';
+import { getTokenVersion } from '$lib/server/auth/token-version-cache';
 
 const PLATFORM_DEFAULT_LOCALE = process.env.PLATFORM_DEFAULT_LOCALE ?? 'en';
 const SAFE_LOCALE_RE = /^[a-zA-Z-]{2,16}$/;
@@ -12,17 +13,20 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.user = null;
 
   // Origin check on state-changing requests, regardless of CSRF defaults.
+  // Compare full origin (scheme + host + port), not just host, so that an
+  // http://… page cannot pose as a same-host https://… principal.
   const method = event.request.method;
   if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
-    const origin = event.request.headers.get('origin');
-    if (origin) {
-      let originHost: string | null = null;
+    const originHeader = event.request.headers.get('origin');
+    if (originHeader) {
+      let originNorm: string | null = null;
       try {
-        originHost = new URL(origin).host;
+        const u = new URL(originHeader);
+        originNorm = `${u.protocol}//${u.host}`;
       } catch {
         // invalid origin → block
       }
-      if (originHost !== event.url.host) {
+      if (originNorm !== event.url.origin) {
         throw error(403, 'cross_origin_blocked');
       }
     }
@@ -39,7 +43,16 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   if (token) {
     try {
-      event.locals.user = await verifyAccessToken(token);
+      const claims = await verifyAccessToken(token);
+      // Token-version check: stateless JWTs cannot be unilaterally revoked, so
+      // we keep a counter on `users.token_version` that revoke-all bumps. A
+      // mismatch here means the access token outlived an explicit revocation.
+      // The cache halves the per-request DB cost; see token-version-cache.ts
+      // for the staleness/recovery-window trade-off.
+      const tv = await getTokenVersion(claims.sub);
+      if (tv !== null && tv === claims.tv) {
+        event.locals.user = claims;
+      }
     } catch {
       event.locals.user = null;
     }

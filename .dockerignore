@@ -1,0 +1,43 @@
+# Build context hygiene: anything we wouldn't ship in a tarball, plus secrets.
+# `volumes: - .:/app` in compose still mounts these at runtime, but the build
+# context is what the daemon caches in its layer store, so secrets MUST stay
+# out of it.
+.git
+.gitignore
+.github
+
+# Secrets and local-only configuration
+.env
+.env.*
+!.env.example
+keys/*
+!keys/.gitkeep
+
+# Build outputs and caches that don't belong in the image build context
+node_modules
+.svelte-kit
+.pnpm-store
+build
+coverage
+.cache
+*.tsbuildinfo
+.eslintcache
+
+# Editor / OS scratch
+.vscode
+.idea
+.history
+.zed
+.fleet
+.cursor
+.aider*
+.DS_Store
+*.swp
+*~
+
+# Ad-hoc dev artifacts
+*.log
+vite.config.*.timestamp-*
+
+# Drizzle generated artifacts (regenerated from schema)
+.drizzle

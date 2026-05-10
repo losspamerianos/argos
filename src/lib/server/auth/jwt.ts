@@ -10,6 +10,10 @@ export type AccessClaims = JWTPayload & {
   op_roles: Record<string, string[]>;
   locale?: string;
   is_platform_admin?: boolean;
+  /** Token version: must match users.token_version at verify time. Bumping the
+   *  user's token_version is how `/api/auth/sessions/revoke-all` kills already
+   *  -issued access tokens whose `exp` has not yet passed. */
+  tv: number;
 };
 
 const ISSUER = process.env.JWT_ISSUER ?? 'argos';

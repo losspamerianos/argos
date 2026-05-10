@@ -108,6 +108,18 @@ export async function listEnabledLocales() {
   return localesMeta;
 }
 
+/**
+ * Force the next `listEnabledLocales` call to hit the DB. Call this after
+ * mutating the `locales` table so the validation in /api/i18n/[locale] and
+ * /api/i18n/[locale]/select sees the new state without a process restart.
+ *
+ * Multi-process deployments still need an out-of-band invalidation (LISTEN/
+ * NOTIFY, Redis pub/sub) — this helper handles only the single-process case.
+ */
+export function invalidateLocaleMeta(): void {
+  localesMeta = null;
+}
+
 export async function pickLocale(
   preferred: string | null | undefined,
   acceptLanguage: string | null | undefined,
@@ -131,7 +143,7 @@ function parseAcceptLanguage(h: string | null | undefined): string[] {
   if (!h) return [];
   return h
     .split(',')
-    .map((part) => part.split(';')[0].trim().toLowerCase())
-    .map((tag) => tag.split('-')[0])
-    .filter(Boolean);
+    .map((part) => (part.split(';')[0] ?? '').trim().toLowerCase())
+    .map((tag) => tag.split('-')[0] ?? '')
+    .filter((s): s is string => s.length > 0);
 }

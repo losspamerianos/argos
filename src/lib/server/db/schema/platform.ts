@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   boolean,
+  integer,
   jsonb,
   primaryKey,
   unique,
@@ -85,6 +86,9 @@ export const users = pgTable(
     /** FK to locales.code added via migration 0002 (schema can't easily express the cross-file FK). */
     preferredLocale: text('preferred_locale'),
     isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
+    /** Bumped by `revoke-all` so already-issued access JWTs become invalid: the
+     *  hooks-server verifier compares this against `tv` in the JWT claim set. */
+    tokenVersion: integer('token_version').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
   },
@@ -165,6 +169,13 @@ export const refreshTokens = pgTable(
  * Append-only via a Postgres trigger installed in migration 0002.
  * Composite FK (organization_id, operation_id) → operations(organization_id, id)
  * also installed in 0002 to prevent cross-tenant override.
+ *
+ * `organizationId` deliberately has no `.references()` here: a simple FK with
+ * ON DELETE SET NULL collides with the `audit_entries_op_implies_org` CHECK
+ * during org-delete cascades (PG fires SET NULL on org_id while op_id is still
+ * set, and the CHECK aborts). Reference integrity for `organization_id` is
+ * enforced instead by the `audit_entries_org_id_validate` trigger installed
+ * in migration 0005.
  */
 export const auditEntries = pgTable(
   'audit_entries',
@@ -172,9 +183,7 @@ export const auditEntries = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
-    organizationId: uuid('organization_id').references(() => organizations.id, {
-      onDelete: 'set null'
-    }),
+    organizationId: uuid('organization_id'),
     operationId: uuid('operation_id'),
     entityType: text('entity_type').notNull(),
     entityId: text('entity_id').notNull(),
@@ -186,9 +195,11 @@ export const auditEntries = pgTable(
     userAgent: text('user_agent')
   },
   (t) => ({
-    orgIdx: index('audit_entries_org_ts_idx').on(t.organizationId, t.ts),
-    opIdx: index('audit_entries_op_ts_idx').on(t.operationId, t.ts),
-    actorIdx: index('audit_entries_actor_ts_idx').on(t.actorUserId, t.ts),
+    // Timestamp-leading indexes are scanned newest-first (SITREP timeline,
+    // forensic queries) — store DESC to keep the index pre-sorted.
+    orgIdx: index('audit_entries_org_ts_idx').on(t.organizationId, t.ts.desc()),
+    opIdx: index('audit_entries_op_ts_idx').on(t.operationId, t.ts.desc()),
+    actorIdx: index('audit_entries_actor_ts_idx').on(t.actorUserId, t.ts.desc()),
     entityIdx: index('audit_entries_entity_idx').on(t.entityType, t.entityId),
     requestIdx: index('audit_entries_request_id_idx').on(t.requestId),
     actionCheck: check(

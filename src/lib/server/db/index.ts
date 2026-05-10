@@ -20,10 +20,10 @@ const client = postgres(url, {
   idle_timeout: 30,
   connect_timeout: 10,
   ssl,
-  // Apply server-side guards on every connection.
+  // Apply server-side guards on every connection. Numeric milliseconds.
   connection: {
-    statement_timeout: '30000',
-    idle_in_transaction_session_timeout: '60000'
+    statement_timeout: 30_000,
+    idle_in_transaction_session_timeout: 60_000
   }
 });
 
