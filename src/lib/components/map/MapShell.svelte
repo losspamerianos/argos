@@ -152,14 +152,17 @@
   }
 
   function applyVisibility(m: maplibregl.Map, vis: LayerVisibility) {
-    const map: Record<LayerKey, string | null> = {
+    // Renamed from `map` to avoid shadowing the module-level MapLibre
+    // instance — the parameter `m` is the map; this local is just a layer
+    // id lookup.
+    const layerIdByKey: Record<LayerKey, string | null> = {
       sectors: null, // no layer rendered yet
       sites: 'sites-circle',
       sightings: 'sightings-circle',
       leads: null // no layer rendered yet
     };
-    for (const key of Object.keys(map) as LayerKey[]) {
-      const layerId = map[key];
+    for (const key of Object.keys(layerIdByKey) as LayerKey[]) {
+      const layerId = layerIdByKey[key];
       if (!layerId || !m.getLayer(layerId)) continue;
       m.setLayoutProperty(layerId, 'visibility', vis[key] ? 'visible' : 'none');
     }
@@ -173,7 +176,8 @@
       zoom,
       attributionControl: { compact: true }
     });
-    lastStyle = style;
+    // lastStyle is seeded by the style-swap $effect on its first run; setting
+    // it here would just duplicate that write.
 
     map.on('load', () => {
       if (!map) return;
@@ -181,14 +185,58 @@
       mapReady = true;
     });
 
+    // MapLibre fires `click` at the end of EVERY mouseup, including a pan-end
+    // even when the cursor barely moved. Distinguish a real tap from "click
+    // that happened to terminate a drag" by measuring the pointer travel
+    // between mousedown and mouseup. Threshold is touch-aware: finger jitter
+    // on assistive-use touch devices routinely produces 4-8 px of drift even
+    // for "stationary" taps, so we suppress at ≥8 px for touch, ≥4 px for
+    // mouse (the desktop convention).
+    let downAt: { x: number; y: number; isTouch: boolean; t: number } | null = null;
+    const DRAG_PX_MOUSE = 4;
+    const DRAG_PX_TOUCH = 8;
+    // Window during which a `mousedown` immediately following a `touchstart`
+    // is the platform's synthesized compat event for the same finger contact
+    // (Safari iOS, Firefox Android). Suppress overwrite so the touch flag
+    // survives into the click decision.
+    const TOUCH_COMPAT_MS = 350;
+
+    map.on('touchstart', (e) => {
+      downAt = { x: e.point.x, y: e.point.y, isTouch: true, t: performance.now() };
+    });
+    map.on('mousedown', (e) => {
+      if (downAt?.isTouch && performance.now() - downAt.t < TOUCH_COMPAT_MS) return;
+      const orig = e.originalEvent as unknown;
+      // Detect touch via both TouchEvent (Safari, Firefox) and PointerEvent
+      // with pointerType==='touch' (Chrome Android, recent Edge). Either
+      // path widens the drag threshold for finger-jitter.
+      let isTouch = false;
+      if (typeof TouchEvent !== 'undefined' && orig instanceof TouchEvent) {
+        isTouch = true;
+      } else if (
+        typeof PointerEvent !== 'undefined' &&
+        orig instanceof PointerEvent &&
+        orig.pointerType === 'touch'
+      ) {
+        isTouch = true;
+      }
+      downAt = { x: e.point.x, y: e.point.y, isTouch, t: performance.now() };
+    });
+
     // Click handler: only fire onMapClick when the click did NOT land on one
-    // of our feature layers. Site/sighting feature clicks are reserved for
-    // future "select & inspect" UX; today they fall through to no-op.
+    // of our feature layers AND it wasn't the tail of a drag.
     map.on('click', (e) => {
       const m = map;
       if (!m) return;
       const fn = onMapClickRef;
       if (!fn) return;
+      if (downAt) {
+        const dx = e.point.x - downAt.x;
+        const dy = e.point.y - downAt.y;
+        const threshold = downAt.isTouch ? DRAG_PX_TOUCH : DRAG_PX_MOUSE;
+        downAt = null;
+        if (Math.hypot(dx, dy) >= threshold) return;
+      }
       const layers = HIT_LAYERS.filter((l) => m.getLayer(l));
       const hits = layers.length > 0 ? m.queryRenderedFeatures(e.point, { layers }) : [];
       if (hits.length === 0) {
@@ -204,8 +252,27 @@
   });
 
   // React to prop changes after the map is initialized.
+  //
+  // `center` is a fresh array on every parent re-evaluation (the page derives
+  // it from `polygonVertexMean(...)`), so a naive `$effect` would fire on
+  // every `invalidateAll()` and reset the user's pan/zoom whenever a sighting
+  // or site was saved. Compare numerically against the last applied values
+  // and skip when unchanged. We only force a `flyTo` when the underlying
+  // data actually moved.
+  let lastFly: { lon: number; lat: number; zoom: number } | null = null;
   $effect(() => {
     if (!mapReady || !map) return;
+    const lon = center[0];
+    const lat = center[1];
+    if (
+      lastFly &&
+      lastFly.lon === lon &&
+      lastFly.lat === lat &&
+      lastFly.zoom === zoom
+    ) {
+      return;
+    }
+    lastFly = { lon, lat, zoom };
     map.flyTo({ center, zoom, duration: 0 });
   });
 

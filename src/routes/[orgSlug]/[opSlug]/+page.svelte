@@ -9,7 +9,11 @@
 
   let { data }: { data: PageData } = $props();
 
-  function polygonCentroid(
+  // Naive vertex-mean — *not* a true polygon centroid. Cheap enough for the
+  // "give the map an opening viewport" use case where exact center doesn't
+  // matter; a shoelace-area-weighted centroid would be marginally better but
+  // is Phase-1B nice-to-have, not a correctness issue.
+  function polygonVertexMean(
     p: GeoJSONPolygon | null,
     fallback: [number, number]
   ): [number, number] {
@@ -29,7 +33,7 @@
     return n > 0 ? [sx / n, sy / n] : fallback;
   }
 
-  const center = $derived(polygonCentroid(data.operation.aoPolygon, data.mapDefaults.center));
+  const center = $derived(polygonVertexMean(data.operation.aoPolygon, data.mapDefaults.center));
   const zoom = $derived(data.mapDefaults.zoom);
 
   let layerVisibility = $state<LayerVisibility>({
@@ -40,45 +44,73 @@
   });
 
   // LayerPanel still consumes the flat array shape; project from the typed map.
+  // We only surface layers that actually render today; sectors / leads are
+  // pre-registered sources without layer definitions, so showing their
+  // toggles would be a dead-checkbox UX. They return in Phase 1B.
   const layers = $derived(
     (
       [
-        { id: 'sectors', label: 'Sectors' },
         { id: 'sites', label: 'Sites' },
-        { id: 'sightings', label: 'Sightings' },
-        { id: 'leads', label: 'Leads' }
+        { id: 'sightings', label: 'Sightings' }
       ] as const
     ).map((l) => ({ ...l, visible: layerVisibility[l.id] }))
   );
 
   function toggleLayer(id: string) {
-    if (id in layerVisibility) {
+    // `Object.hasOwn` not `in` — symmetric with the validator hardening and
+    // keeps prototype-chain keys out, even though the current callers only
+    // pass IDs from a hard-coded list.
+    if (Object.hasOwn(layerVisibility, id)) {
       const k = id as LayerKey;
       layerVisibility = { ...layerVisibility, [k]: !layerVisibility[k] };
     }
   }
 
+  // `nonce` increments on every drawer open so {#key} forces a remount of the
+  // form even when the new drawer has the same `kind` as the previous one —
+  // otherwise Svelte reuses the form component instance and the user's
+  // typed-in field values silently survive a confirmed "discard".
   type DrawerState =
     | { kind: 'closed' }
-    | { kind: 'site'; point: { lon: number; lat: number } | null }
-    | { kind: 'sighting'; point: { lon: number; lat: number } | null };
+    | { kind: 'site'; nonce: number; point: { lon: number; lat: number } | null }
+    | { kind: 'sighting'; nonce: number; point: { lon: number; lat: number } | null };
 
   let drawer = $state<DrawerState>({ kind: 'closed' });
+  let drawerNonce = 0;
 
   function closeDrawer() {
     drawer = { kind: 'closed' };
   }
 
+  /**
+   * Confirm before swapping or overwriting a drawer that already holds an
+   * in-progress form. Returns true if the caller may proceed.
+   *
+   * Phase-1B will replace this with a proper unsaved-changes tracker; for now
+   * the worst case is "user types a site, then clicks the map / Sightings
+   * button and loses input silently". A confirm dialog is the cheap mitigation.
+   */
+  function mayReplaceDrawer(): boolean {
+    if (drawer.kind === 'closed') return true;
+    return confirm('Discard the currently open form?');
+  }
+
   function startCreateSite() {
-    drawer = { kind: 'site', point: null };
+    if (!mayReplaceDrawer()) return;
+    drawer = { kind: 'site', nonce: ++drawerNonce, point: null };
   }
 
   function startCreateSighting() {
-    drawer = { kind: 'sighting', point: null };
+    if (!mayReplaceDrawer()) return;
+    drawer = { kind: 'sighting', nonce: ++drawerNonce, point: null };
   }
 
   function onMapClick(ll: { lon: number; lat: number }) {
-    drawer = { kind: 'sighting', point: ll };
+    // Map-click is a low-friction action; if a drawer is already open, we
+    // ignore the click rather than nag the user with a confirm. They can
+    // close the drawer themselves and re-click. This preserves form state.
+    if (drawer.kind !== 'closed') return;
+    drawer = { kind: 'sighting', nonce: ++drawerNonce, point: ll };
   }
 
   const drawerTitle = $derived(
@@ -95,6 +127,7 @@
   onToggle={toggleLayer}
   onCreateSite={startCreateSite}
   onCreateSighting={startCreateSighting}
+  canCreateSite={data.canCreateSite}
 />
 <div class="flex-1">
   <MapShell
@@ -109,18 +142,22 @@
 </div>
 <DossierDrawer open={drawer.kind !== 'closed'} title={drawerTitle} onClose={closeDrawer}>
   {#if drawer.kind === 'site'}
-    <SiteForm
-      orgSlug={data.organization.slug}
-      opSlug={data.operation.slug}
-      initialPoint={drawer.point}
-      onClose={closeDrawer}
-    />
+    {#key drawer.nonce}
+      <SiteForm
+        orgSlug={data.organization.slug}
+        opSlug={data.operation.slug}
+        initialPoint={drawer.point}
+        onClose={closeDrawer}
+      />
+    {/key}
   {:else if drawer.kind === 'sighting'}
-    <SightingForm
-      orgSlug={data.organization.slug}
-      opSlug={data.operation.slug}
-      initialPoint={drawer.point}
-      onClose={closeDrawer}
-    />
+    {#key drawer.nonce}
+      <SightingForm
+        orgSlug={data.organization.slug}
+        opSlug={data.operation.slug}
+        initialPoint={drawer.point}
+        onClose={closeDrawer}
+      />
+    {/key}
   {/if}
 </DossierDrawer>

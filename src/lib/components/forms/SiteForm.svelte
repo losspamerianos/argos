@@ -57,11 +57,21 @@
         errorMsg = body.message ?? `error_${res.status}`;
         return;
       }
-      // Type-narrow the response shape (we don't read fields here, just confirm
-      // the wire contract; future: surface the new feature ID for selection).
+      // Drain the response body once. We don't currently read fields off it.
+      // The `await` keeps the connection clean; the cast is unverified by
+      // design — fail-by-runtime-error if the server contract drifts.
       (await res.json()) as SiteCreateResponse;
-      await invalidateAll();
+      // Close the drawer FIRST: the resource is already persisted server-side,
+      // so if invalidateAll() later rejects (transient nav abort, server load
+      // throws) we have already given the user the success signal and avoided
+      // the "stale form re-submit → duplicate row" trap.
       onClose();
+      try {
+        await invalidateAll();
+      } catch {
+        // Swallow refresh errors: the create succeeded; the UI will pick up
+        // the new feature on the next navigation/load.
+      }
     } catch {
       errorMsg = 'network_error';
     } finally {
@@ -73,11 +83,15 @@
 <form class="flex flex-col gap-3 text-sm" onsubmit={submit}>
   <label class="block">
     <span class="text-xs text-neutral-400">Name</span>
+    <!-- `aria-invalid` deliberately not bound to `errorMsg`: the message
+         may originate from lon/lat/network paths, not Name. The
+         `role="alert"` block below announces the error on its own. -->
     <input
       type="text"
       bind:value={name}
       required
       maxlength="200"
+      aria-describedby={errorMsg ? 'site-form-error' : undefined}
       class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
     />
   </label>
@@ -130,7 +144,7 @@
   </label>
 
   {#if errorMsg}
-    <p class="text-xs text-red-400" role="alert">{errorMsg}</p>
+    <p id="site-form-error" class="text-xs text-red-400" role="alert">{errorMsg}</p>
   {/if}
 
   <div class="flex justify-end gap-2 pt-1">

@@ -76,3 +76,14 @@ export const refreshIpLimiter = new TokenBucket(20, 1 / 3);
 // by isolating a single cookie's rate from its IP's rate; combined with the
 // IP bucket, each cookie still has to share the IP allowance.
 export const refreshCookieLimiter = new TokenBucket(30, 1);
+
+// Operational write endpoints (sites + sightings POST). The lowest-trust
+// caller for sightings is any org-member, which makes "logged-in observer
+// spam" a real storage-amplification path; sites are tighter (data_manager+).
+// Keyed by `${user.sub}:${op.id}` so a single principal cannot also amplify
+// across different ops they belong to.
+// Sites: 10 burst, 1 every 6 s sustained (~10/min).
+export const sitesWriteLimiter = new TokenBucket(10, 1 / 6);
+// Sightings: 30 burst, 1 every 2 s sustained (~30/min) — higher because field
+// crews log multiple sightings in a few minutes during a sweep.
+export const sightingsWriteLimiter = new TokenBucket(30, 1 / 2);

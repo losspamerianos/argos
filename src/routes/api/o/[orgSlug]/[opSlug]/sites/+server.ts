@@ -6,8 +6,13 @@ import { sites } from '$lib/server/db/schema';
 import { geoAsGeoJSON, pointFromLonLat } from '$lib/server/db/postgis';
 import { siteMachine } from '$lib/server/lifecycle/site';
 import { canManageSites } from '$lib/server/auth/rbac';
+import { sitesWriteLimiter } from '$lib/server/auth/rate-limit';
 import { audit } from '$lib/server/audit';
-import { loadOpContext, loadOpContextForWrite } from '$lib/server/api/op-context';
+import {
+  loadOpContext,
+  loadOpContextForWrite,
+  readJsonBody
+} from '$lib/server/api/op-context';
 import { parseCreateSitePayload } from '$lib/server/api/validators/site';
 import { siteRowToFeature, toFeatureCollection } from '$lib/server/api/geo';
 import type { SiteRow } from '$lib/server/api/geo';
@@ -37,7 +42,12 @@ export const GET: RequestHandler = async (event) => {
 export const POST: RequestHandler = async (event) => {
   const ctx = await loadOpContextForWrite(event, canManageSites, 'forbidden_site_write');
 
-  const body = (await event.request.json().catch(() => null)) as unknown;
+  // Per-(user, op) write throttle.
+  if (!sitesWriteLimiter.consume(`sites:${ctx.user.sub}:${ctx.op.id}`)) {
+    throw error(429, 'rate_limited');
+  }
+
+  const body = await readJsonBody(event);
   const parsed = parseCreateSitePayload(body);
   if (!parsed.ok) throw error(400, parsed.code);
 

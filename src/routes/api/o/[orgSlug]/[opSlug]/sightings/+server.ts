@@ -5,8 +5,13 @@ import { db } from '$lib/server/db';
 import { sightings, sites } from '$lib/server/db/schema';
 import { geoAsGeoJSON, pointFromLonLat } from '$lib/server/db/postgis';
 import { canRecordSightings } from '$lib/server/auth/rbac';
+import { sightingsWriteLimiter } from '$lib/server/auth/rate-limit';
 import { audit } from '$lib/server/audit';
-import { loadOpContext, loadOpContextForWrite } from '$lib/server/api/op-context';
+import {
+  loadOpContext,
+  loadOpContextForWrite,
+  readJsonBody
+} from '$lib/server/api/op-context';
 import { parseCreateSightingPayload } from '$lib/server/api/validators/sighting';
 import { sightingRowToFeature, toFeatureCollection } from '$lib/server/api/geo';
 import type { SightingRow } from '$lib/server/api/geo';
@@ -49,7 +54,14 @@ export const POST: RequestHandler = async (event) => {
     'forbidden_sighting_write'
   );
 
-  const body = (await event.request.json().catch(() => null)) as unknown;
+  // Per-(user, op) write throttle. Observers are the broadest write grant on
+  // sightings, so without this a logged-in low-trust principal can amplify
+  // storage cost.
+  if (!sightingsWriteLimiter.consume(`sightings:${ctx.user.sub}:${ctx.op.id}`)) {
+    throw error(429, 'rate_limited');
+  }
+
+  const body = await readJsonBody(event);
   const parsed = parseCreateSightingPayload(body);
   if (!parsed.ok) throw error(400, parsed.code);
 

@@ -29,6 +29,11 @@
   let submitting = $state(false);
   let errorMsg: string | null = $state(null);
 
+  // aria-invalid on lon/lat should only fire for location-relevant errors;
+  // a `invalid_ts` should not flag the coordinate inputs to a screen reader.
+  const LOCATION_ERROR_CODES = ['location_required', 'invalid_lon', 'invalid_lat', 'invalid_point'];
+  const locationInvalid = $derived(errorMsg !== null && LOCATION_ERROR_CODES.includes(errorMsg));
+
   async function submit(e: SubmitEvent) {
     e.preventDefault();
     if (submitting) return;
@@ -47,10 +52,19 @@
         tsIso = parsed.toISOString();
       }
 
+      // Sightings must carry a location: the whole point of recording them in
+      // a map-first system is to support spatial analysis (clustering, sweep
+      // planning). The API also allows null for programmatic callers, but the
+      // human-facing form rejects it.
+      if (lon === null || lon === undefined || lat === null || lat === undefined) {
+        errorMsg = 'location_required';
+        return;
+      }
+
       const payload: CreateSightingPayload = {
         ts: tsIso,
-        lon: lon ?? null,
-        lat: lat ?? null,
+        lon,
+        lat,
         description: description.trim() ? description.trim() : null,
         attributes: {}
       };
@@ -64,9 +78,15 @@
         errorMsg = body.message ?? `error_${res.status}`;
         return;
       }
+      // Drain the response body once. See SiteForm for the rationale on the
+      // close-before-invalidate ordering.
       (await res.json()) as SightingCreateResponse;
-      await invalidateAll();
       onClose();
+      try {
+        await invalidateAll();
+      } catch {
+        // Swallow refresh errors: the create succeeded.
+      }
     } catch {
       errorMsg = 'network_error';
     } finally {
@@ -94,6 +114,9 @@
         min="-180"
         max="180"
         bind:value={lon}
+        required
+        aria-invalid={locationInvalid}
+        aria-describedby={errorMsg ? 'sighting-form-error' : undefined}
         class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
       />
     </label>
@@ -105,6 +128,9 @@
         min="-90"
         max="90"
         bind:value={lat}
+        required
+        aria-invalid={locationInvalid}
+        aria-describedby={errorMsg ? 'sighting-form-error' : undefined}
         class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
       />
     </label>
@@ -122,7 +148,7 @@
   </label>
 
   {#if errorMsg}
-    <p class="text-xs text-red-400" role="alert">{errorMsg}</p>
+    <p id="sighting-form-error" class="text-xs text-red-400" role="alert">{errorMsg}</p>
   {/if}
 
   <div class="flex justify-end gap-2 pt-1">

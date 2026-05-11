@@ -3,6 +3,7 @@ import { desc, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { sightings, sites } from '$lib/server/db/schema';
 import { geoAsGeoJSON } from '$lib/server/db/postgis';
+import { canManageSites } from '$lib/server/auth/rbac';
 import {
   sightingRowToFeature,
   siteRowToFeature,
@@ -13,9 +14,12 @@ import {
 
 const SIGHTINGS_INITIAL_LIMIT = 100;
 
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageServerLoad = async ({ parent, locals, params }) => {
   const parentData = await parent();
   const opId = parentData.operation.id;
+  // Reuse the same RBAC predicate the API endpoint uses, so the UI affordance
+  // (the "+ Site" button) and the server-side permission check cannot drift.
+  const canCreateSite = canManageSites(locals.user, params.orgSlug, params.opSlug);
 
   const [siteRows, sightingRows] = await Promise.all([
     db
@@ -51,6 +55,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     sites: toFeatureCollection((siteRows as unknown as SiteRow[]).map(siteRowToFeature)),
     sightings: toFeatureCollection(
       (sightingRows as unknown as SightingRow[]).map(sightingRowToFeature)
-    )
+    ),
+    canCreateSite
   };
 };
