@@ -48,6 +48,11 @@ services:
       MAP_DEFAULT_CENTER_LAT: ${MAP_DEFAULT_CENTER_LAT:-34.9787}
       MAP_DEFAULT_ZOOM: ${MAP_DEFAULT_ZOOM:-12}
       VITE_USE_POLLING: ${VITE_USE_POLLING:-0}
+      # Behind the caddy reverse-proxy: the public origin and the directive to
+      # trust X-Forwarded-Proto in the hooks Origin check.
+      ORIGIN: ${ARGOS_PUBLIC_ORIGIN:-http://localhost:5173}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
       # pnpm content-addressed cache lives on its own named volume, never in /app.
       npm_config_store_dir: /pnpm-store
     volumes:
@@ -76,7 +81,34 @@ services:
     # rewrites it when devs add/remove deps. CI should use `--frozen-lockfile`.
     command: sh -c "pnpm install --prefer-frozen-lockfile && pnpm dev"
 
+  # Edge — TLS terminator + Basic Auth in front of the Vite dev server. Only
+  # spun up by the `edge` profile so a vanilla `docker compose up` does not
+  # touch ports 80/443. Run with `docker compose --profile edge up -d caddy`.
+  caddy:
+    image: caddy:2-alpine
+    container_name: argos-caddy
+    profiles: [edge]
+    restart: unless-stopped
+    environment:
+      # Bcrypt hash of the cleartext password; Caddy reads via {env.…} in the
+      # Caddyfile. Set CADDY_BASIC_AUTH_HASH in `.env`.
+      CADDY_BASIC_AUTH_HASH: ${CADDY_BASIC_AUTH_HASH:?CADDY_BASIC_AUTH_HASH must be set}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   argos_db_data:
   argos_node_modules:
   argos_pnpm_store:
+  caddy_data:
+  caddy_config:

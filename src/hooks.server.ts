@@ -8,6 +8,15 @@ import { getTokenVersion } from '$lib/server/auth/token-version-cache';
 const PLATFORM_DEFAULT_LOCALE = process.env.PLATFORM_DEFAULT_LOCALE ?? 'en';
 const SAFE_LOCALE_RE = /^[a-zA-Z-]{2,16}$/;
 
+// When the app sits behind a trusted reverse proxy (Caddy, nginx, …) the
+// edge terminates TLS and forwards plain HTTP to us. The browser's Origin
+// header reflects the public scheme (https://…); `event.url` reflects the
+// internal scheme (http://…). Comparing them naively would 403 every POST.
+// Honor `X-Forwarded-Proto` only when `TRUST_PROXY=1` is set, so a direct
+// hit to the dev port without a proxy can't spoof its scheme.
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+const SAFE_PROTO_RE = /^https?$/;
+
 export const handle: Handle = async ({ event, resolve }) => {
   event.locals.requestId = randomUUID();
   event.locals.user = null;
@@ -26,7 +35,17 @@ export const handle: Handle = async ({ event, resolve }) => {
       } catch {
         // invalid origin → block
       }
-      if (originNorm !== event.url.origin) {
+      // When trusted-proxied, reconstruct the expected origin using
+      // `X-Forwarded-Proto` so the scheme matches the public-facing URL the
+      // browser saw, not the internal http hop Vite serves on.
+      let expectedOrigin = event.url.origin;
+      if (TRUST_PROXY) {
+        const xfp = event.request.headers.get('x-forwarded-proto');
+        if (xfp && SAFE_PROTO_RE.test(xfp)) {
+          expectedOrigin = `${xfp}:` + expectedOrigin.slice(expectedOrigin.indexOf('//'));
+        }
+      }
+      if (originNorm !== expectedOrigin) {
         throw error(403, 'cross_origin_blocked');
       }
     }

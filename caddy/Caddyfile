@@ -1,0 +1,33 @@
+# ARGOS edge — sslip.io domain + Auto-TLS (Let's Encrypt) + Basic Auth.
+#
+# `argos.164.68.111.61.nip.io` resolves to 164.68.111.61 via sslip.io's
+# wildcard DNS, so no DNS record management is required.
+#
+# Basic Auth sits in front of Vite so anonymous internet traffic can't hit
+# the dev server's source-map / HMR endpoints. The app's own JWT login
+# happens *after* the basic-auth gate.
+argos.164.68.111.61.nip.io {
+	# `env` placeholder is expanded by Caddy at start-up from CADDY_BASIC_AUTH_HASH.
+	# Username is hard-coded; password is the bcrypt hash of the cleartext.
+	basic_auth {
+		argos {env.CADDY_BASIC_AUTH_HASH}
+	}
+
+	# Reverse-proxy to the SvelteKit dev container. Caddy automatically sets
+	# X-Forwarded-Proto and X-Forwarded-Host; the SvelteKit Origin check in
+	# `hooks.server.ts` honors X-Forwarded-Proto when TRUST_PROXY=1.
+	#
+	# `transport http { versions 1.1 }` is intentional: Vite's HMR socket
+	# uses WebSocket which only works over HTTP/1.1. Caddy's default works
+	# fine here, but pinning makes the intent explicit.
+	reverse_proxy app:5173 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	encode zstd gzip
+	log {
+		output stderr
+		format console
+	}
+}
