@@ -7,9 +7,16 @@
     opSlug: string;
     initialPoint?: { lon: number; lat: number } | null;
     onClose: () => void;
+    onRequestPickFromMap?: (cb: (ll: { lon: number; lat: number }) => void) => void;
   };
 
-  let { orgSlug, opSlug, initialPoint = null, onClose }: Props = $props();
+  let {
+    orgSlug,
+    opSlug,
+    initialPoint = null,
+    onClose,
+    onRequestPickFromMap
+  }: Props = $props();
 
   // datetime-local wants `YYYY-MM-DDTHH:mm` in *local* time. We normalise on
   // submit by converting back to ISO via Date.
@@ -28,6 +35,13 @@
   let description = $state('');
   let submitting = $state(false);
   let errorMsg: string | null = $state(null);
+
+  function pickFromMap() {
+    onRequestPickFromMap?.((ll) => {
+      lon = ll.lon;
+      lat = ll.lat;
+    });
+  }
 
   // aria-invalid on lon/lat should only fire for location-relevant errors;
   // a `invalid_ts` should not flag the coordinate inputs to a screen reader.
@@ -115,8 +129,8 @@
         max="180"
         bind:value={lon}
         required
-        aria-invalid={locationInvalid}
-        aria-describedby={errorMsg ? 'sighting-form-error' : undefined}
+        aria-invalid={locationInvalid || undefined}
+        aria-describedby={locationInvalid ? 'sighting-form-error' : undefined}
         class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
       />
     </label>
@@ -129,12 +143,21 @@
         max="90"
         bind:value={lat}
         required
-        aria-invalid={locationInvalid}
-        aria-describedby={errorMsg ? 'sighting-form-error' : undefined}
+        aria-invalid={locationInvalid || undefined}
+        aria-describedby={locationInvalid ? 'sighting-form-error' : undefined}
         class="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 focus:border-amber-400 focus:outline-none"
       />
     </label>
   </div>
+  {#if onRequestPickFromMap}
+    <button
+      type="button"
+      onclick={pickFromMap}
+      class="-mt-1 self-start rounded border border-neutral-700 px-2 py-1 text-[10px] uppercase tracking-wider text-neutral-300 hover:border-amber-400 hover:text-amber-400"
+    >
+      Pick from map
+    </button>
+  {/if}
 
   <label class="block">
     <span class="text-xs text-neutral-400">Description</span>

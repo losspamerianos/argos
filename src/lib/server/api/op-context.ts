@@ -5,6 +5,7 @@ import { db } from '../db';
 import { operations, organizations } from '../db/schema';
 import { canAccessOperation } from '../auth/rbac';
 import { isReservedOrgSlug, isValidSlug } from '../reserved';
+import { UUID_V4_RE } from './validators/common';
 import type { AccessClaims } from '../auth/jwt';
 
 const UA_MAX = 512;
@@ -95,6 +96,19 @@ export async function loadOpContextForWrite(
     throw error(403, forbiddenCode);
   }
   return ctx;
+}
+
+/**
+ * Pull a UUID-shaped path parameter (e.g. `[siteId]`) and 404 when it is
+ * missing or the wrong shape. The 404 (rather than 400) is deliberate —
+ * for a route like `/api/o/.../sites/[siteId]`, a malformed id is
+ * indistinguishable from a probe; surfacing the same code as "not found"
+ * avoids leaking the difference between "garbage id" and "valid id you
+ * don't own". Pass the human-friendly entity tag in `notFoundCode`.
+ */
+export function requireUuidParam(raw: string | undefined, notFoundCode: string): string {
+  if (!raw || !UUID_V4_RE.test(raw)) throw error(404, notFoundCode);
+  return raw;
 }
 
 /**

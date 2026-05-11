@@ -36,6 +36,10 @@ export function siteRowToFeature(row: SiteRow): Feature<SiteFeatureProperties> {
     id: row.id,
     geometry: parsePoint(row.pointGeoJSON),
     properties: {
+      // Mirror the row id into properties so MapLibre's `promoteId:'id'`
+      // can recover it as the feature id at hit-test time. (Top-level
+      // `Feature.id` is silently dropped for non-integer values.)
+      id: row.id,
       name: row.name,
       kind: row.kind,
       lifecycleState: row.lifecycleState as SiteLifecycleState,
@@ -52,6 +56,7 @@ export function sightingRowToFeature(row: SightingRow): Feature<SightingFeatureP
     id: row.id,
     geometry: parsePoint(row.pointGeoJSON),
     properties: {
+      id: row.id,
       ts: row.ts.toISOString(),
       siteId: row.siteId,
       description: row.description,

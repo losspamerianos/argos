@@ -58,7 +58,13 @@ export default [
       '@typescript-eslint/no-misused-promises': [
         'error',
         { checksVoidReturn: { attributes: false } }
-      ]
+      ],
+      // Disable the JS `no-undef` rule on .svelte files: it can't see the
+      // type-only declarations from `<script generics="S extends string">`
+      // and flags `S` as undefined. TypeScript's own type-checker already
+      // catches actual undefined-variable usage, so the rule is redundant
+      // here.
+      'no-undef': 'off'
     }
   },
   {

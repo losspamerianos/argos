@@ -17,9 +17,10 @@ const SIGHTINGS_INITIAL_LIMIT = 100;
 export const load: PageServerLoad = async ({ parent, locals, params }) => {
   const parentData = await parent();
   const opId = parentData.operation.id;
-  // Reuse the same RBAC predicate the API endpoint uses, so the UI affordance
-  // (the "+ Site" button) and the server-side permission check cannot drift.
-  const canCreateSite = canManageSites(locals.user, params.orgSlug, params.opSlug);
+  // Reuse the same RBAC predicate the API endpoints use, so the UI
+  // affordances ("+ Site" button, dossier Edit + transition controls) and
+  // the server-side permission check cannot drift.
+  const canManage = canManageSites(locals.user, params.orgSlug, params.opSlug);
 
   const [siteRows, sightingRows] = await Promise.all([
     db
@@ -56,6 +57,6 @@ export const load: PageServerLoad = async ({ parent, locals, params }) => {
     sightings: toFeatureCollection(
       (sightingRows as unknown as SightingRow[]).map(sightingRowToFeature)
     ),
-    canCreateSite
+    canManageSites: canManage
   };
 };

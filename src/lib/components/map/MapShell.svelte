@@ -11,6 +11,9 @@
   export type LayerKey = 'sectors' | 'sites' | 'sightings' | 'leads';
   export type LayerVisibility = Record<LayerKey, boolean>;
 
+  export type FeatureClickKind = 'site' | 'sighting';
+  export type FeatureClickHandler = (f: { kind: FeatureClickKind; id: string }) => void;
+
   type Props = {
     center: [number, number];
     zoom: number;
@@ -20,6 +23,15 @@
     sightingFeatures?: FeatureCollection<SightingFeatureProperties>;
     layerVisibility?: LayerVisibility;
     onMapClick?: (ll: { lon: number; lat: number }) => void;
+    onFeatureClick?: FeatureClickHandler;
+    /**
+     * Pick-mode: when true, all clicks (including on feature layers) are
+     * delivered to `onMapClick` and `onFeatureClick` is suppressed. The
+     * cursor switches to a crosshair so the user knows the map is in a
+     * "click to pick a coordinate" mode. Used by site forms/dossier to
+     * let the user pick lon/lat from the map.
+     */
+    pickMode?: boolean;
   };
 
   // MapLibre's GeoJSONSourceSpecification.data wants a *mutable* FeatureCollection,
@@ -44,21 +56,36 @@
       sightings: true,
       leads: false
     },
-    onMapClick
+    onMapClick,
+    onFeatureClick,
+    pickMode = false
   }: Props = $props();
 
   let containerEl: HTMLDivElement;
   let map: maplibregl.Map | null = null;
   let mapReady = $state(false);
 
-  // Closure cell so the click handler installed once in onMount always reads
-  // the latest prop. The $effect below keeps it fresh; the initial-only-capture
-  // here is intentional because we never read the value of `onMapClickRef`
-  // outside of the click handler closure.
+  // Closure cells so the click handler installed once in onMount always reads
+  // the latest props. The $effect below keeps them fresh; the initial-only-
+  // capture here is intentional because we never read these values outside
+  // of the click-handler closure.
   // svelte-ignore state_referenced_locally
   let onMapClickRef: Props['onMapClick'] = onMapClick;
+  // svelte-ignore state_referenced_locally
+  let onFeatureClickRef: Props['onFeatureClick'] = onFeatureClick;
+  // svelte-ignore state_referenced_locally
+  let pickModeRef = pickMode;
   $effect(() => {
     onMapClickRef = onMapClick;
+  });
+  $effect(() => {
+    onFeatureClickRef = onFeatureClick;
+  });
+  $effect(() => {
+    pickModeRef = pickMode;
+    // Switch the canvas cursor so the user sees pick-mode is active.
+    const m = map;
+    if (m) m.getCanvas().style.cursor = pickMode ? 'crosshair' : '';
   });
 
   type AoSourceData =
@@ -106,10 +133,14 @@
       m.addSource('leads', { type: 'geojson', data: emptyFC() });
     }
     if (!m.getSource('sites')) {
-      m.addSource('sites', { type: 'geojson', data: asGeoJSONData(sFC) });
+      // `promoteId:'id'` lifts the string UUID from `properties.id` to the
+      // feature's canonical id. Without this, MapLibre silently drops
+      // string top-level `Feature.id`s and `queryRenderedFeatures().id`
+      // comes back undefined — which broke the dossier-on-click handler.
+      m.addSource('sites', { type: 'geojson', data: asGeoJSONData(sFC), promoteId: 'id' });
     }
     if (!m.getSource('sightings')) {
-      m.addSource('sightings', { type: 'geojson', data: asGeoJSONData(sgFC) });
+      m.addSource('sightings', { type: 'geojson', data: asGeoJSONData(sgFC), promoteId: 'id' });
     }
     if (!m.getSource('ao')) {
       m.addSource('ao', { type: 'geojson', data: aoSource(ao) });
@@ -149,6 +180,11 @@
       });
     }
     applyVisibility(m, layerVisibility);
+    // Re-apply the pick-mode cursor here too: this function is the single
+    // place that runs both on initial map `load` and on every `style.load`
+    // re-install, and the canvas element MapLibre creates does not preserve
+    // the previously-applied cursor style across those events.
+    m.getCanvas().style.cursor = pickModeRef ? 'crosshair' : '';
   }
 
   function applyVisibility(m: maplibregl.Map, vis: LayerVisibility) {
@@ -223,13 +259,12 @@
       downAt = { x: e.point.x, y: e.point.y, isTouch, t: performance.now() };
     });
 
-    // Click handler: only fire onMapClick when the click did NOT land on one
-    // of our feature layers AND it wasn't the tail of a drag.
+    // Click handler: route to onFeatureClick when the click landed on a
+    // feature layer, otherwise to onMapClick (empty-space tap → new sighting).
+    // Drag-tail suppression applies to both paths.
     map.on('click', (e) => {
       const m = map;
       if (!m) return;
-      const fn = onMapClickRef;
-      if (!fn) return;
       if (downAt) {
         const dx = e.point.x - downAt.x;
         const dy = e.point.y - downAt.y;
@@ -239,9 +274,42 @@
       }
       const layers = HIT_LAYERS.filter((l) => m.getLayer(l));
       const hits = layers.length > 0 ? m.queryRenderedFeatures(e.point, { layers }) : [];
-      if (hits.length === 0) {
-        fn({ lon: e.lngLat.lng, lat: e.lngLat.lat });
+      // In pick-mode, suppress feature routing: the click is a coordinate
+      // pick, not a dossier-open. Hand the lngLat to onMapClick instead.
+      if (pickModeRef) {
+        const fn = onMapClickRef;
+        if (fn) fn({ lon: e.lngLat.lng, lat: e.lngLat.lat });
+        return;
       }
+      if (hits.length > 0) {
+        const feat = onFeatureClickRef;
+        if (!feat) return;
+        // Topmost hit wins. queryRenderedFeatures orders hits by layer order
+        // (top-to-bottom), so hits[0] is the visually topmost circle the
+        // user actually clicked on.
+        const top = hits[0];
+        if (!top) return;
+        const kind: FeatureClickKind | null =
+          top.layer.id === 'sites-circle'
+            ? 'site'
+            : top.layer.id === 'sightings-circle'
+              ? 'sighting'
+              : null;
+        // `top.id` is the promoted id from properties.id (string UUID).
+        // Fall back to properties.id explicitly if the source-level
+        // promoteId for some reason did not apply (older cached style).
+        const rawId =
+          typeof top.id === 'string'
+            ? top.id
+            : typeof top.properties?.id === 'string'
+              ? top.properties.id
+              : null;
+        if (!kind || !rawId) return;
+        feat({ kind, id: rawId });
+        return;
+      }
+      const fn = onMapClickRef;
+      if (fn) fn({ lon: e.lngLat.lng, lat: e.lngLat.lat });
     });
   });
 

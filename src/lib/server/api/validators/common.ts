@@ -65,6 +65,10 @@ function walkForForbidden(node: unknown, depth: number): string | null {
   return null;
 }
 
+/** RFC 4122 v4 UUID (version nibble = 4, variant nibble in {8,9,a,b}). */
+export const UUID_V4_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /** lon/lat pair validation. Both must be present or both absent. */
 export type PointResult =
   | { kind: 'present'; lon: number; lat: number }

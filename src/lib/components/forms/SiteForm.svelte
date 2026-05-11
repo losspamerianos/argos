@@ -7,9 +7,16 @@
     opSlug: string;
     initialPoint?: { lon: number; lat: number } | null;
     onClose: () => void;
+    /**
+     * Optional integration with the page-level map-pick bus. When provided,
+     * a "Pick from map" button is rendered and clicking it puts the map
+     * into pick-mode; the next map click resolves the callback with the
+     * chosen lon/lat. Forms with no parent pick bus simply hide the button.
+     */
+    onRequestPickFromMap?: (cb: (ll: { lon: number; lat: number }) => void) => void;
   };
 
-  let { orgSlug, opSlug, initialPoint = null, onClose }: Props = $props();
+  let { orgSlug, opSlug, initialPoint = null, onClose, onRequestPickFromMap }: Props = $props();
 
   // Soft-enumerated kinds. The DB column is free text; this list is what the
   // form proposes today. Extend without a migration.
@@ -33,6 +40,13 @@
   let notes = $state('');
   let submitting = $state(false);
   let errorMsg: string | null = $state(null);
+
+  function pickFromMap() {
+    onRequestPickFromMap?.((ll) => {
+      lon = ll.lon;
+      lat = ll.lat;
+    });
+  }
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -132,6 +146,15 @@
       />
     </label>
   </div>
+  {#if onRequestPickFromMap}
+    <button
+      type="button"
+      onclick={pickFromMap}
+      class="-mt-1 self-start rounded border border-neutral-700 px-2 py-1 text-[10px] uppercase tracking-wider text-neutral-300 hover:border-amber-400 hover:text-amber-400"
+    >
+      Pick from map
+    </button>
+  {/if}
 
   <label class="block">
     <span class="text-xs text-neutral-400">Notes</span>

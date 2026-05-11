@@ -1,6 +1,7 @@
 import type { CreateSightingPayload } from '$lib/types/api';
 import {
   isPlainObject,
+  UUID_V4_RE,
   validateAttributes,
   validatePoint,
   type ValidationResult
@@ -43,10 +44,6 @@ function calendarComponentsValid(m: RegExpExecArray): boolean {
   if (D < 1 || D > daysInMonth[M - 1]!) return false;
   return true;
 }
-
-// RFC 4122 v4 UUID (version nibble = 4, variant nibble in {8,9,a,b}).
-const UUID_V4_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const DESC_MAX = 4000;
 

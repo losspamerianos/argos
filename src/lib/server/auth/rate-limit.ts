@@ -87,3 +87,9 @@ export const sitesWriteLimiter = new TokenBucket(10, 1 / 6);
 // Sightings: 30 burst, 1 every 2 s sustained (~30/min) — higher because field
 // crews log multiple sightings in a few minutes during a sweep.
 export const sightingsWriteLimiter = new TokenBucket(30, 1 / 2);
+// Site update + lifecycle transition: 20 burst, 1 every 3 s sustained
+// (~20/min). Generous because a coordinator might triage a sweep's worth of
+// sites in one session (status changes, edits) without that being abuse.
+// Both endpoints consume from the SAME key (`sites:write-extra:${sub}:${op}`)
+// so the cap is a combined rate, not 20 each.
+export const sitesUpdateLimiter = new TokenBucket(20, 1 / 3);
