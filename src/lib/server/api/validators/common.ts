@@ -69,6 +69,71 @@ function walkForForbidden(node: unknown, depth: number): string | null {
 export const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * Strict ISO-8601 with optional fractional seconds and a required timezone
+ * designator (Z or ±HH:MM). Rejects bare dates, locale strings and the
+ * near-max-date oddities that `Date.parse` would otherwise accept. Capture
+ * groups split components so the calendar-overflow check below doesn't have
+ * to re-parse.
+ */
+const ISO_TS_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const TS_MIN_YEAR = 1970;
+const TS_MAX_YEAR = 2100;
+
+function isLeapYear(y: number): boolean {
+  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+function calendarComponentsValid(m: RegExpExecArray): boolean {
+  const M = Number.parseInt(m[2]!, 10);
+  const D = Number.parseInt(m[3]!, 10);
+  const H = Number.parseInt(m[4]!, 10);
+  const Mi = Number.parseInt(m[5]!, 10);
+  const S = m[6] ? Number.parseInt(m[6], 10) : 0;
+  if (M < 1 || M > 12) return false;
+  if (H > 23 || Mi > 59 || S > 59) return false;
+  const Y = Number.parseInt(m[1]!, 10);
+  const daysInMonth = [
+    31, isLeapYear(Y) ? 29 : 28, 31, 30, 31, 30,
+    31, 31, 30, 31, 30, 31
+  ];
+  if (D < 1 || D > daysInMonth[M - 1]!) return false;
+  return true;
+}
+
+/**
+ * Parse a wire-format ISO-8601 timestamp into a canonical UTC string.
+ *
+ * Accepts strings only. Validates calendar components on their face
+ * (Feb 30, hour 24, leap-second :60, Feb 29 in non-leap years all reject)
+ * timezone-independently, then bounds the UTC year to `[1970, 2100]` to
+ * reject `Date.parse` near-max-date oddities. Returns the canonical UTC
+ * ISO string (`toISOString` form) on success.
+ *
+ * On error, the code is always `invalid_ts` — the caller can wrap with a
+ * field-specific code if they want different copy.
+ *
+ * **Known operational gap (Phase 2)**: the `[1970, 2100]` bound is
+ * shape-only; this validator cannot consult per-operation context (e.g.
+ * `operation.createdAt`) so a user *can* backdate a sighting to before
+ * the operation existed. Endpoints that care should layer a contextual
+ * sanity check on top (e.g. `ts >= op.createdAt - 1y`).
+ */
+export function parseIsoTimestamp(raw: unknown): ValidationResult<string> {
+  if (typeof raw !== 'string') return { ok: false, code: 'invalid_ts' };
+  const m = ISO_TS_RE.exec(raw);
+  if (!m) return { ok: false, code: 'invalid_ts' };
+  if (!calendarComponentsValid(m)) return { ok: false, code: 'invalid_ts' };
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return { ok: false, code: 'invalid_ts' };
+  const year = new Date(parsed).getUTCFullYear();
+  if (year < TS_MIN_YEAR || year > TS_MAX_YEAR) {
+    return { ok: false, code: 'invalid_ts' };
+  }
+  return { ok: true, value: new Date(parsed).toISOString() };
+}
+
 /** lon/lat pair validation. Both must be present or both absent. */
 export type PointResult =
   | { kind: 'present'; lon: number; lat: number }

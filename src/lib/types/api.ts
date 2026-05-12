@@ -76,6 +76,16 @@ export type CreateSightingPayload = {
   attributes?: Record<string, unknown>;
 };
 
+/** Partial-update payload for sightings; same semantics as `UpdateSitePayload`. */
+export type UpdateSightingPayload = {
+  ts?: string | null;
+  lon?: number | null;
+  lat?: number | null;
+  siteId?: string | null;
+  description?: string | null;
+  attributes?: Record<string, unknown>;
+};
+
 /**
  * Update payload — all fields optional, partial-merge semantics on the server
  * (only fields explicitly present are touched). `attributes` is replaced
@@ -108,3 +118,5 @@ export type SiteTransitionResponse = {
   to: SiteLifecycleState;
 };
 export type SightingCreateResponse = { sighting: Feature<SightingFeatureProperties> };
+export type SightingReadResponse = { sighting: Feature<SightingFeatureProperties> };
+export type SightingUpdateResponse = { sighting: Feature<SightingFeatureProperties> };

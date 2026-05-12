@@ -19,11 +19,13 @@
   }: Props = $props();
 
   // datetime-local wants `YYYY-MM-DDTHH:mm` in *local* time. We normalise on
-  // submit by converting back to ISO via Date.
+  // submit by converting back to ISO via Date. Year is padded to 4 digits
+  // for lexical-format conformance even at impossible year values.
   function nowLocalForInput(): string {
     const d = new Date();
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const pad2 = (n: number) => n.toString().padStart(2, '0');
+    const year = d.getFullYear().toString().padStart(4, '0');
+    return `${year}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   }
 
   let tsLocal = $state(nowLocalForInput());

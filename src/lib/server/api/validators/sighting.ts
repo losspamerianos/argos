@@ -1,60 +1,32 @@
 import type { CreateSightingPayload } from '$lib/types/api';
 import {
   isPlainObject,
+  parseIsoTimestamp,
   UUID_V4_RE,
   validateAttributes,
   validatePoint,
   type ValidationResult
 } from './common';
 
-// Strict ISO-8601 with optional fractional seconds and a required timezone
-// designator (Z or ±HH:MM). Rejects bare dates, locale strings and the
-// near-max-date oddities that `Date.parse` would otherwise accept. Capture
-// groups split components so the calendar-overflow check below doesn't have
-// to re-parse.
-const ISO_TS_RE =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
-const TS_MIN_YEAR = 1970;
-const TS_MAX_YEAR = 2100;
-
-function isLeapYear(y: number): boolean {
-  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-}
-
-/**
- * Validate calendar components on their face, independent of timezone. The
- * regex enforces shape only — `Date.parse` would silently roll Feb 30, hour
- * 25, etc. into a different valid moment. This check rejects them outright,
- * which is what the user means by "invalid date" regardless of the offset
- * suffix.
- */
-function calendarComponentsValid(m: RegExpExecArray): boolean {
-  const M = Number.parseInt(m[2]!, 10);
-  const D = Number.parseInt(m[3]!, 10);
-  const H = Number.parseInt(m[4]!, 10);
-  const Mi = Number.parseInt(m[5]!, 10);
-  const S = m[6] ? Number.parseInt(m[6], 10) : 0;
-  if (M < 1 || M > 12) return false;
-  if (H > 23 || Mi > 59 || S > 59) return false;
-  const Y = Number.parseInt(m[1]!, 10);
-  const daysInMonth = [
-    31, isLeapYear(Y) ? 29 : 28, 31, 30, 31, 30,
-    31, 31, 30, 31, 30, 31
-  ];
-  if (D < 1 || D > daysInMonth[M - 1]!) return false;
-  return true;
-}
-
 const DESC_MAX = 4000;
 
-const FIELDS_NOT_YET_SUPPORTED = ['observedAnimalId', 'reportedByPersonId', 'photos'];
+/**
+ * Fields the wire shape does not support yet. Both create and update reject
+ * them up front so the caller learns immediately, rather than silently
+ * dropping unknown keys.
+ */
+export const SIGHTING_FIELDS_NOT_YET_SUPPORTED = [
+  'observedAnimalId',
+  'reportedByPersonId',
+  'photos'
+] as const;
 
 export function parseCreateSightingPayload(
   body: unknown
 ): ValidationResult<CreateSightingPayload> {
   if (!isPlainObject(body)) return { ok: false, code: 'body_not_object' };
 
-  for (const k of FIELDS_NOT_YET_SUPPORTED) {
+  for (const k of SIGHTING_FIELDS_NOT_YET_SUPPORTED) {
     // `Object.hasOwn` rather than `k in body`: the latter walks the
     // prototype chain, which is harmless for the current keys but
     // would silently break if the list ever grew to include
@@ -64,20 +36,9 @@ export function parseCreateSightingPayload(
 
   let ts: string | null = null;
   if (body.ts !== undefined && body.ts !== null) {
-    if (typeof body.ts !== 'string') return { ok: false, code: 'invalid_ts' };
-    const m = ISO_TS_RE.exec(body.ts);
-    if (!m) return { ok: false, code: 'invalid_ts' };
-    // Calendar-component check is timezone-independent — earlier round-trip
-    // approach via `toISOString` only worked for Z-suffixed inputs because
-    // offset inputs see `Date.parse` apply the offset before rolling.
-    if (!calendarComponentsValid(m)) return { ok: false, code: 'invalid_ts' };
-    const parsed = Date.parse(body.ts);
-    if (!Number.isFinite(parsed)) return { ok: false, code: 'invalid_ts' };
-    const year = new Date(parsed).getUTCFullYear();
-    if (year < TS_MIN_YEAR || year > TS_MAX_YEAR) {
-      return { ok: false, code: 'invalid_ts' };
-    }
-    ts = new Date(parsed).toISOString();
+    const parsed = parseIsoTimestamp(body.ts);
+    if (!parsed.ok) return parsed;
+    ts = parsed.value;
   }
 
   const point = validatePoint(body);

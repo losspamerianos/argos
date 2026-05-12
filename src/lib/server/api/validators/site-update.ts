@@ -67,7 +67,10 @@ export function parseUpdateSitePayload(body: unknown): ValidationResult<UpdateSi
       out.lon = null;
       out.lat = null;
     } else {
-      const pt = validatePoint(body);
+      // Pass an explicit lon/lat-only object so `validatePoint`'s contract
+      // reads only those two fields, not whatever else the caller sent
+      // alongside.
+      const pt = validatePoint({ lon: body.lon, lat: body.lat });
       if (pt.kind === 'error') return { ok: false, code: pt.code };
       if (pt.kind === 'absent') return { ok: false, code: 'incomplete_point' };
       out.lon = pt.lon;
@@ -77,6 +80,10 @@ export function parseUpdateSitePayload(body: unknown): ValidationResult<UpdateSi
   }
 
   if (Object.hasOwn(body, 'attributes')) {
+    // See sighting-update.ts: reject explicit null since the column is
+    // non-null with a `{}` default and the silent coerce-to-empty hides
+    // a wire-contract inconsistency with the other clearable fields.
+    if (body.attributes === null) return { ok: false, code: 'invalid_attributes' };
     const attrs = validateAttributes(body.attributes);
     if (!attrs.ok) return attrs;
     out.attributes = attrs.value;

@@ -93,3 +93,8 @@ export const sightingsWriteLimiter = new TokenBucket(30, 1 / 2);
 // Both endpoints consume from the SAME key (`sites:write-extra:${sub}:${op}`)
 // so the cap is a combined rate, not 20 each.
 export const sitesUpdateLimiter = new TokenBucket(20, 1 / 3);
+// Sighting update + delete: 20 burst, 1 every 3 s. Same shape as the site
+// limiter; coordinator-only RBAC keeps the abuse surface small. Both
+// endpoints consume the SAME key `sightings:write-extra:${sub}:${op}` so
+// PATCH + DELETE share one bucket.
+export const sightingsUpdateLimiter = new TokenBucket(20, 1 / 3);

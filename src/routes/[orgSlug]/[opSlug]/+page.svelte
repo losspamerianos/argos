@@ -9,6 +9,7 @@
   import SiteForm from '$lib/components/forms/SiteForm.svelte';
   import SightingForm from '$lib/components/forms/SightingForm.svelte';
   import SiteDossier from '$lib/components/dossier/SiteDossier.svelte';
+  import SightingDossier from '$lib/components/dossier/SightingDossier.svelte';
   import type { GeoJSONPolygon } from '$lib/types/geo';
   import type { PageData } from './$types';
 
@@ -79,7 +80,8 @@
     | { kind: 'closed' }
     | { kind: 'site'; nonce: number; point: { lon: number; lat: number } | null }
     | { kind: 'sighting'; nonce: number; point: { lon: number; lat: number } | null }
-    | { kind: 'site-dossier'; nonce: number; siteId: string };
+    | { kind: 'site-dossier'; nonce: number; siteId: string }
+    | { kind: 'sighting-dossier'; nonce: number; sightingId: string };
 
   let drawer = $state<DrawerState>({ kind: 'closed' });
   let drawerNonce = 0;
@@ -175,26 +177,41 @@
     // wants the click's coordinate, not to open another dossier). MapShell
     // emits onFeatureClick only when a layer is hit, so we need to bridge.
     if (pickResolver) return; // map's own click handler delivers the coord
+
+    // Clicking the marker for the already-open dossier is a no-op — no
+    // confirm dialog, no remount. Saves the user a "discard?" nag when
+    // they tap the same pin twice.
+    if (f.kind === 'site' && drawer.kind === 'site-dossier' && drawer.siteId === f.id) return;
+    if (
+      f.kind === 'sighting' &&
+      drawer.kind === 'sighting-dossier' &&
+      drawer.sightingId === f.id
+    ) return;
+
     if (f.kind === 'site') {
-      // SiteDossier owns an Edit mode now (Phase 1B), so swapping the drawer
+      // Both dossiers own an Edit mode now (Phase 1B), so swapping the drawer
       // can silently discard an in-progress edit / form. Confirm with the
-      // user first, mirroring `startCreate*`. Sighting-dossier comes in a
-      // later sprint; ignore those clicks for now.
+      // user first, mirroring `startCreate*`.
       if (!mayReplaceDrawer()) return;
       pickResolver = null;
       drawer = { kind: 'site-dossier', nonce: ++drawerNonce, siteId: f.id };
+    } else if (f.kind === 'sighting') {
+      if (!mayReplaceDrawer()) return;
+      pickResolver = null;
+      drawer = { kind: 'sighting-dossier', nonce: ++drawerNonce, sightingId: f.id };
     }
   }
 
-  const drawerTitle = $derived(
-    drawer.kind === 'site'
-      ? 'New site'
-      : drawer.kind === 'sighting'
-        ? 'New sighting'
-        : drawer.kind === 'site-dossier'
-          ? 'Site'
-          : ''
-  );
+  // Drawer kind → title. Keep this as a map so adding kinds (leads,
+  // animals, …) is a one-liner instead of growing the nested ternary.
+  const DRAWER_TITLES: Record<DrawerState['kind'], string> = {
+    closed: '',
+    site: 'New site',
+    sighting: 'New sighting',
+    'site-dossier': 'Site',
+    'sighting-dossier': 'Sighting'
+  };
+  const drawerTitle = $derived(DRAWER_TITLES[drawer.kind]);
 </script>
 
 <LayerPanel
@@ -270,6 +287,19 @@
         opSlug={data.operation.slug}
         siteId={drawer.siteId}
         canEdit={data.canManageSites}
+        onClose={closeDrawer}
+        onRequestPickFromMap={requestPickFromMap}
+        onCancelPickFromMap={cancelPickFromMap}
+      />
+    {/key}
+  {:else if drawer.kind === 'sighting-dossier'}
+    {#key drawer.nonce}
+      <SightingDossier
+        orgSlug={data.organization.slug}
+        opSlug={data.operation.slug}
+        sightingId={drawer.sightingId}
+        canEdit={data.canManageSites}
+        siteFeatures={data.sites}
         onClose={closeDrawer}
         onRequestPickFromMap={requestPickFromMap}
         onCancelPickFromMap={cancelPickFromMap}
